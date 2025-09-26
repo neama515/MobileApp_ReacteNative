@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "العملاء",
+    "slug": "ClientsApp",
+    "owner": "neamatullah_2",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/AppImage.png",
+    "scheme": "clientsapp",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/AppImage.png",
+        "backgroundColor": "#E6F4FE"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.neamatullah2.ClientsApp"
+    },
+    "web": {
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#000000"
+          }
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6639ca56-d00d-435b-b07f-8f5fb959b1e4"
+      }
+    }
+  }
+}
