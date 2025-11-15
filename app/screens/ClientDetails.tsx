@@ -104,12 +104,7 @@ export default function ClientDetails() {
 
   const [initialPayment, setInitialPayment] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("نقدا" as PaymentMethod);
-  // const [paymentDate, setPaymentDate] = useState<Date>(() => {
-  //   const now = new Date();
-  //   const d = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // بداية اليوم محلي
-  //   d.setHours(0, 0, 0, 0);
-  //   return d;
-  // });
+  
   const [paymentDate, setPaymentDate] = useState<string>(() => {
     const now = new Date();
     return now.toISOString().split("T")[0];
@@ -298,100 +293,8 @@ export default function ClientDetails() {
     }
   };
 
-  // change date of payment 
-  // const onChangeDate = (event: any, selectedDate?: Date) => {
-  //   console.log('====================================');
-  //   console.log(paymentDate);
-  //   console.log('====================================');
-  //   setShowDatePicker(false);
-  //   if (selectedDate) {
-  //     setPaymentDate(selectedDate);
-  //   }
-  // };
 
-  // const onChangeDate = (event: any, selectedDate?: Date) => {
-  //   setShowDatePicker(false);
-  //   if (selectedDate) {
-  //     // معالجة الفرق في المنطقة الزمنية
-  //     const fixedDate = new Date(
-  //       selectedDate.getFullYear(),
-  //       selectedDate.getMonth(),
-  //       selectedDate.getDate()
-  //     );
-  //     setPaymentDate(fixedDate);
-  //     console.log('====================================');
-  //     console.log(paymentDate);
-  //     console.log('====================================');
-  //     console.log('====================================');
-  //     console.log(fixedDate);
-  //     console.log('====================================');
-  //   }
-  // };
-  // const onChangeDate = (event: any, selectedDate?: Date) => {
-  //   setShowDatePicker(false);
-  //   if (selectedDate) {
-  //     const localDate = new Date(
-  //       selectedDate.getFullYear(),
-  //       selectedDate.getMonth(),
-  //       selectedDate.getDate()
-  //     );
-  //     setPaymentDate(localDate);
-  //     console.log('====================================');
-  //     console.log(localDate);
-  //     console.log( paymentDate);
-  //   }
-  // };
-  // const onChangeDate = (event: any, selectedDate?: Date) => {
-  //   // Android: event.type === 'set' أو 'dismissed'
-  //   if (Platform.OS === "android") {
-  //     setShowDatePicker(false);
-  //     if (event?.type !== "set") return; // المستخدم ألغى
-  //   }
 
-  //   // بعض نُسخ يرجع التاريخ في event.nativeEvent.timestamp
-  //   const picked =
-  //     selectedDate ??
-  //     (event?.nativeEvent?.timestamp ? new Date(event.nativeEvent.timestamp) : undefined);
-
-  //   if (!picked || !(picked instanceof Date) || isNaN(picked.getTime())) {
-  //     console.warn("Invalid date picked:", picked);
-  //     return;
-  //   }
-
-  //   // نطبع التاريخ كبداية اليوم محلي (تجنب مشاكل التوقيت)
-  //   const normalized = new Date(picked.getFullYear(), picked.getMonth(), picked.getDate());
-  //   normalized.setHours(0, 0, 0, 0);
-
-  //   setPaymentDate(normalized);
-  // };
-  // const onChangeDate = (event: any, selectedDate?: Date) => {
-  //   // Android بيرجع حدثين (set / dismissed)
-  //   if (Platform.OS === "android") {
-  //     setShowDatePicker(false);
-  //     if (event.type !== "set") return; // المستخدم لغى الاختيار
-  //   }
-
-  //   // بعض الأنظمة ترجع التاريخ في event.nativeEvent.timestamp بدل selectedDate
-  //   const pickedDate =
-  //     selectedDate ??
-  //     (event?.nativeEvent?.timestamp
-  //       ? new Date(event.nativeEvent.timestamp)
-  //       : null);
-
-  //   // تحقق أن التاريخ صالح
-  //   if (!pickedDate || !(pickedDate instanceof Date) || isNaN(pickedDate.getTime())) {
-  //     console.warn("Invalid date selected:", pickedDate);
-  //     return;
-  //   }
-
-  //   // تصحيح فرق التوقيت لتجنب اليوم السابق
-  //   const localDate = new Date(
-  //     pickedDate.getTime() - pickedDate.getTimezoneOffset() * 60000
-  //   );
-
-  //   setPaymentDate(localDate);
-  //   console.log("✅ selected:", localDate.toISOString());
-  // };
   const onChangeDate = (event: any, selectedDate?: Date) => {
     setShowDatePicker(false);
     if (selectedDate) {
@@ -820,7 +723,7 @@ export default function ClientDetails() {
     }
   };
 
-  // ✅ حذف دفعة من الفاتورة
+  //  حذف دفعة من الفاتورة
   const confirmDeletePayment = (id: string) => {
     Alert.alert("تأكيد الحذف", "هل تريد حذف هذه الدفعة؟", [
       { text: "إلغاء", style: "cancel" },
@@ -875,7 +778,7 @@ export default function ClientDetails() {
     }
   };
 
-  // ✅ تعديل دفعة داخل الفاتورة
+  //تعديل دفعة داخل الفاتورة
   const editPaymentInInvoice = async (
     clientId: string,
     invoiceId: string,
@@ -926,7 +829,7 @@ export default function ClientDetails() {
     }
   };
 
-  // ✅ حفظ التعديلات من مودال التعديل
+  //  حفظ التعديلات من مودال التعديل
   const saveEditedPayment = async () => {
     if (!editPayment || !selectedInvoice) return;
 
