@@ -396,7 +396,7 @@ export default function ClientDetails() {
     setShowDatePicker(false);
     if (selectedDate) {
       const localDateString = selectedDate.toISOString().split("T")[0];
-      setPaymentDate(localDateString); // ✅ ما فيش error
+      setPaymentDate(localDateString); 
     }
   };
   // delete invoice
