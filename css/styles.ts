@@ -140,7 +140,7 @@ clientBox: {
     marginTop: 6,
   },
   actions: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     marginTop: 10,
     justifyContent: "center",
     alignItems:"flex-start",
@@ -194,14 +194,15 @@ tab: {
     borderWidth: 1,
     borderColor: "#64748b",
     paddingTop: 10,
-    paddingVertical: 1,
+    paddingVertical: 0,
     width: 100,
-    marginTop:0,
+    marginTop:3,
     textAlign: "center",
     borderRadius: 6,
     color: "#fff",
     backgroundColor: "#334155",
     fontSize:30
+  ,marginLeft:3
   },
   modalOverlay: {
     flex:1,
