@@ -1230,138 +1230,8 @@ export default function ClientDetails() {
                       >
                         <Text style={styles.actionText}>✏️ تعديل</Text>
                       </TouchableOpacity>
-                      {/* <TouchableOpacity
-                        style={[
-                          {
-                            backgroundColor: "#34699A",
-                            paddingHorizontal: 20,
-                            paddingVertical: 10,
-                            marginVertical: 5,
-                            borderRadius: 4,
-                            flexDirection: "row",
-                          },
-                        ]}
-                        onPress={() => {
-                          if (!existing) return;
-                          const updated = selectedInvoiceItems
-                            .map((i) =>
-                              i.id === band.id ? { ...i, qty: i.qty - 1 } : i
-                            )
-                            .filter(i => i.qty > 0);
-                          setSelectedInvoiceItems(updated);
-                        }}
-
-                      >
-                        <Text
-                          style={[
-                            styles.buttonText,
-                            { padding: 0, fontSize: 20 },
-                          ]}
-                        >
-                          إزاله
-                        </Text>
-                      </TouchableOpacity> */}
-                      {/* <TextInput
-                        style={styles.qtyInput}
-                        value={qty.toString()}
-                        keyboardType="numeric"
-                        onChangeText={(v) => {
-                          const n = Math.max(0, parseInt(arabicToEnglishNumbers(v)) || 0);
-                          if (existing) {
-                            const updated = selectedInvoiceItems
-                              .map((i) =>
-                                i.id === band.id ? { ...i, qty: n } : i
-                              )
-                              .filter(i => i.qty > 0); 
-                            setSelectedInvoiceItems(updated);
-                          } else if (n > 0) {
-                            setSelectedInvoiceItems([
-                              ...selectedInvoiceItems,
-                              { ...band, qty: n },
-                            ]);
-                          }
-                        }}
-
-                      /> */}
-                      {/* <TextInput
-                        style={styles.qtyInput}
-                        value={(() => {
-                          const found = selectedInvoiceItems.find(i => i.id === band.id);
-                          return found && found.qty !== 0 ? found.qty.toString() : "0";
-                        })()}
-                        keyboardType="numeric"
-                        onChangeText={(v) => {
-                          let val = arabicToEnglishNumbers(v);
-
-                          if (val === ".") {
-                            val = "0.";
-                          }
-
-                          if (!val.includes(".")) {
-                            val = val.replace(/^0+(?!$)/, "");
-                          }
-
-                          setQtyInput(val);
-
-                          const n = parseFloat(val) || 0;
-
-                          if (existing) {
-                            const updated = selectedInvoiceItems
-                              .map((i) =>
-                                i.id === band.id ? { ...i, qty: n } : i
-                              )
-                              .filter((i) => i.qty > 0);
-                            setSelectedInvoiceItems(updated);
-                          } else if (n > 0) {
-                            setSelectedInvoiceItems([
-                              ...selectedInvoiceItems,
-                              { ...band, qty: n },
-                            ]);
-                          }
-                        }}
-                      /> */}
-                      {/* 
-                      <TextInput
-                        style={styles.qtyInput}
-                        value={qtyInput}
-                        keyboardType="numeric"
-                        onChangeText={(v) => {
-                          let val = arabicToEnglishNumbers(v);
-
-                          // لو المستخدم كتب "." أول مرة → نخليها "0."
-                          if (val === ".") {
-                            val = "0.";
-                          }
-
-                          // شيل الأصفار الزيادة على الشمال (بس سيب صفر واحد لو كله أصفار)
-                          if (!val.includes(".")) {
-                            val = val.replace(/^0+(?=\d)/, "");
-                          }
-
-                          // خزن النص زي ما هو
-                          setQtyInput(val);
-
-                          // لو النص مش بس "." أو "0." → نحوله لرقم ونخزنه
-                          if (val !== "." && val !== "0." && val !== "") {
-                            const n = parseFloat(val) || 0;
-
-                            if (existing) {
-                              const updated = selectedInvoiceItems
-                                .map((i) =>
-                                  i.id === band.id ? { ...i, qty: n } : i
-                                )
-                                .filter((i) => i.qty > 0);
-                              setSelectedInvoiceItems(updated);
-                            } else if (n > 0) {
-                              setSelectedInvoiceItems([
-                                ...selectedInvoiceItems,
-                                { ...band, qty: n },
-                              ]);
-                            }
-                          }
-                        }}
-                      /> */}
-
+    
+            
                       <TextInput
                         style={styles.qtyInput}
                         value={
@@ -1406,40 +1276,7 @@ export default function ClientDetails() {
                         }}
                       />
 
-                      {/* <TouchableOpacity
-                        style={[
-                          {
-                            backgroundColor: "#34699A",
-                            paddingHorizontal: 20,
-                            paddingVertical: 10,
-                            marginVertical: 5,
-                            borderRadius: 4,
-                            flexDirection: "row",
-                          },
-                        ]}
-                        onPress={() => {
-                          if (existing) {
-                            const updated = selectedInvoiceItems.map((i) =>
-                              i.id === band.id ? { ...i, qty: i.qty + 1 } : i
-                            );
-                            setSelectedInvoiceItems(updated);
-                          } else {
-                            setSelectedInvoiceItems([
-                              ...selectedInvoiceItems,
-                              { ...band, qty: 1 },
-                            ]);
-                          }
-                        }}
-                      >
-                        <Text
-                          style={[
-                            styles.buttonText,
-                            { padding: 0, fontSize: 20 },
-                          ]}
-                        >
-                          إضافة
-                        </Text>
-                      </TouchableOpacity> */}
+                  
                     </View>
 
 
@@ -1457,9 +1294,7 @@ export default function ClientDetails() {
         activeTab === "invoices" && (
           <View style={{ flex: 1, padding: 0, width: 340, position: "relative", left: -14 }}>
             <View>
-              {/* <Text style={{ fontWeight: "bold", marginVertical: 10, textAlign: "left" }}>
-                اختيار البنود للفاتورة:
-              </Text> */}
+          
 
               {selectedInvoiceItems.length > 0 ?
 
@@ -1691,6 +1526,9 @@ export default function ClientDetails() {
                   style={styles.clientBox}
                   onPress={() => { setSelectedInvoice(item) }}
                 >
+                  <Text style={{ fontWeight: "bold", textAlign: "center" }}>
+                  رقم الفاتورة: {item.number || "—"}
+                  </Text>
                   <Text style={{ fontWeight: "bold", textAlign: "center" }}>
                     🧾 تاريخ الفاتورة: {item.date || "—"}
                   </Text>
