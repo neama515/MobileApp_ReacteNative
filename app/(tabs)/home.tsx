@@ -8,7 +8,7 @@ import {
   getDocs,
   query,
   updateDoc,
-  where
+  where, orderBy, limit
 } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import {
@@ -30,7 +30,10 @@ interface Client {
   name: string;
   country: string;
   userId: string;
+  hasRemaining?: boolean;      
+  remainingAmount?: number;
 }
+
 
 const Home: React.FC = () => {
   const { user } = useAuth(); 
@@ -43,30 +46,129 @@ const Home: React.FC = () => {
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const loadClients = async () => {
+  // const loadClients = async () => {
 
+  //   if (!user) return;
+
+  //   try {
+
+  //     const q = query(collection(db, "clients"), where("userId", "==", user.uid));
+  //     const querySnapshot = await getDocs(q);
+
+  //     const clientsData: Client[] = querySnapshot.docs.map((docItem) => {
+  //       const data = docItem.data() as any;
+  //       return {
+  //         id: docItem.id,
+  //         name: data.name || "",
+  //         country: data.country || "",
+  //         userId: data.userId || "",
+  //       };
+  //     });
+  //     clientsData.sort((a, b) => a.name.localeCompare(b.name, "ar")); 
+
+  //     setClients(clientsData);
+  //     console.log(clients);
+      
+  //   } catch (err) {
+  //     console.error("Error loading clients", err);
+  //     Alert.alert("خطأ", "حدث خطأ أثناء تحميل العملاء");
+  //   }
+  // };
+  // const loadClients = async () => {
+  //   if (!user) return;
+
+  //   try {
+  //     const q = query(collection(db, "clients"), where("userId", "==", user.uid));
+  //     const querySnapshot = await getDocs(q);
+
+  //     const clientsData: any[] = [];
+
+  //     for (const docItem of querySnapshot.docs) {
+  //       const data = docItem.data();
+
+  //       // Fetch last invoice
+  //       const invoicesRef = collection(db, "clients", docItem.id, "invoices");
+  //       const lastInvoiceQuery = query(
+  //         invoicesRef,
+  //         orderBy("createdAt", "desc"),
+  //         limit(1)
+  //       );
+  //       const invoiceSnap = await getDocs(lastInvoiceQuery);
+
+  //       let hasRemaining = false;
+
+  //       if (!invoiceSnap.empty) {
+  //         const lastInvoice = invoiceSnap.docs[0].data() as any;
+  //         if (lastInvoice.remaining > 0) {
+  //           hasRemaining = true;
+  //         }
+  //       }
+
+  //       clientsData.push({
+  //         id: docItem.id,
+  //         name: data.name,
+  //         country: data.country,
+  //         userId: data.userId,
+  //         hasRemaining,
+  //       });
+  //     }
+
+  //     clientsData.sort((a, b) => a.name.localeCompare(b.name, "ar"));
+  //     setClients(clientsData);
+
+  //   } catch (err) {
+  //     console.error("Error loading clients", err);
+  //   }
+  // };
+  const loadClients = async () => {
     if (!user) return;
 
     try {
-
       const q = query(collection(db, "clients"), where("userId", "==", user.uid));
       const querySnapshot = await getDocs(q);
 
-      const clientsData: Client[] = querySnapshot.docs.map((docItem) => {
-        const data = docItem.data() as any;
-        return {
-          id: docItem.id,
-          name: data.name || "",
-          country: data.country || "",
-          userId: data.userId || "",
-        };
-      });
-      clientsData.sort((a, b) => a.name.localeCompare(b.name, "ar")); 
+      const clientsData: any[] = [];
 
+      for (const docItem of querySnapshot.docs) {
+        const data = docItem.data();
+
+        // Fetch last invoice
+        const invoicesRef = collection(db, "clients", docItem.id, "invoices");
+        const lastInvoiceQuery = query(
+          invoicesRef,
+          orderBy("createdAt", "desc"),
+          limit(1)
+        );
+        const invoiceSnap = await getDocs(lastInvoiceQuery);
+
+        let hasRemaining = false;
+        let remainingAmount = 0;
+
+        if (!invoiceSnap.empty) {
+          const lastInvoice = invoiceSnap.docs[0].data() as any;
+
+          remainingAmount = lastInvoice.remaining || 0;
+
+          if (remainingAmount > 0) {
+            hasRemaining = true;
+          }
+        }
+
+        clientsData.push({
+          id: docItem.id,
+          name: data.name,
+          country: data.country,
+          userId: data.userId,
+          hasRemaining,
+          remainingAmount,   
+        });
+      }
+
+      clientsData.sort((a, b) => a.name.localeCompare(b.name, "ar"));
       setClients(clientsData);
+
     } catch (err) {
       console.error("Error loading clients", err);
-      Alert.alert("خطأ", "حدث خطأ أثناء تحميل العملاء");
     }
   };
 
@@ -173,7 +275,8 @@ const Home: React.FC = () => {
 
 
   useEffect(() => {
-    if (!search.trim()) setFilteredClients(clients);
+    if (!search.trim()){ setFilteredClients(clients); console.log(filteredClients[0]);}
+    
     else {
       const lower = search.toLowerCase();
       setFilteredClients(clients.filter((c) => c.name.toLowerCase().includes(lower) || c.country.toLowerCase().includes(lower)));
@@ -240,44 +343,103 @@ const Home: React.FC = () => {
               data={filteredClients}
               keyExtractor={(item) => item.id}
               contentContainerStyle={{ paddingBottom: 0 }}
+              // renderItem={({ item }) => (
+              //   <View style={styles.clientBox}>
+              //     <TouchableOpacity
+              //       onPress={() =>
+              //         router.push(
+              //           `/screens/ClientDetails?id=${encodeURIComponent(item.id)}&name=${encodeURIComponent(item.name)}&country=${encodeURIComponent(item.country)}`
+              //         )
+
+              //       }
+              //     >
+              //       <Text style={[styles.clientName, { textAlign: "left" }]}>{item.name}</Text>
+              //       <Text style={[styles.clientCountry,
+              //       { textAlign: "left" }
+              //       ]}>{item.country}</Text>
+              //     </TouchableOpacity>
+
+              //     <View style={styles.actions}>
+              //       <TouchableOpacity
+              //         style={[
+              //           styles.actionButton,
+              //           { backgroundColor: "#ebbf24" }, 
+              //         ]}
+              //         onPress={() => startEditing(item)}
+              //       >
+              //         <Text style={styles.actionText}>✏️ تعديل</Text>
+              //       </TouchableOpacity>
+              //       <TouchableOpacity
+              //         style={[
+              //           styles.actionButton,
+              //           { backgroundColor: "#8C1007" }, 
+              //         ]}
+              //         onPress={() => deleteClient(item.id)}
+              //       >
+              //         <Text style={styles.actionText}>🗑 حذف</Text>
+              //       </TouchableOpacity>
+
+              //     </View>
+              //   </View>
               renderItem={({ item }) => (
-                <View style={styles.clientBox}>
-                  <TouchableOpacity
-                    onPress={() =>
-                      router.push(
-                        `/screens/ClientDetails?id=${encodeURIComponent(item.id)}&name=${encodeURIComponent(item.name)}&country=${encodeURIComponent(item.country)}`
-                      )
-
-                    }
+                  <View
+                    style={[
+                      styles.clientBox,
+                      item.hasRemaining && { backgroundColor: "#FFF7CC" } 
+                    ]}
                   >
-                    <Text style={[styles.clientName, { textAlign: "left" }]}>{item.name}</Text>
-                    <Text style={[styles.clientCountry,
-                    { textAlign: "left" }
-                    ]}>{item.country}</Text>
-                  </TouchableOpacity>
-
-                  <View style={styles.actions}>
                     <TouchableOpacity
-                      style={[
-                        styles.actionButton,
-                        { backgroundColor: "#ebbf24" }, 
-                      ]}
-                      onPress={() => startEditing(item)}
+                      onPress={() =>
+                        router.push(
+                          `/screens/ClientDetails?id=${encodeURIComponent(item.id)}&name=${encodeURIComponent(item.name)}&country=${encodeURIComponent(item.country)}`
+                        )
+                      }
                     >
-                      <Text style={styles.actionText}>✏️ تعديل</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.actionButton,
-                        { backgroundColor: "#8C1007" }, 
-                      ]}
-                      onPress={() => deleteClient(item.id)}
-                    >
-                      <Text style={styles.actionText}>🗑 حذف</Text>
+                      <Text style={[styles.clientName, { textAlign: "left" }]}>
+                        {item.name}
+                      </Text>
+                      <Text style={[styles.clientCountry, { textAlign: "left" }]}>
+                        {item.country}
+                      </Text>
+
+                      {item.hasRemaining && (
+                        <Text
+                          style={{
+                            color: "red",
+                            fontWeight: "bold",
+                            marginTop: 5,
+                            fontSize: 16,
+                          }}
+                        > المتبقي: {item.remainingAmount} جنيه
+                        </Text>
+                      )}
+
                     </TouchableOpacity>
 
+                    <View style={styles.actions}>
+                      <TouchableOpacity
+                        style={[
+                          styles.actionButton,
+                          { backgroundColor: "#ebbf24" },
+                        ]}
+                        onPress={() => startEditing(item)}
+                      >
+                        <Text style={styles.actionText}>✏️ تعديل</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.actionButton,
+                          { backgroundColor: "#8C1007" },
+                        ]}
+                        onPress={() => deleteClient(item.id)}
+                      >
+                        <Text style={styles.actionText}>🗑 حذف</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
+                
+
               )}
             />
           )}

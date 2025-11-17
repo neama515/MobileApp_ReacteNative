@@ -42,6 +42,7 @@ type PaymentMethod = "نقدا" |
   | "بريد"
   | "فودافون كاش"
   | "أورانج كاش"
+  | "خصم"
   ;
 
 
@@ -104,7 +105,7 @@ export default function ClientDetails() {
 
   const [initialPayment, setInitialPayment] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("نقدا" as PaymentMethod);
-  
+
   const [paymentDate, setPaymentDate] = useState<string>(() => {
     const now = new Date();
     return now.toISOString().split("T")[0];
@@ -118,6 +119,8 @@ export default function ClientDetails() {
   const [visible, setVisible] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceNumberSave, setInvoiceNumberSave] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString());
+  const [showInvoiceDatePicker, setShowInvoiceDatePicker] = useState(false);
 
 
   const [paymentsModalVisible, setPaymentsModalVisible] = useState(false);
@@ -299,7 +302,7 @@ export default function ClientDetails() {
     setShowDatePicker(false);
     if (selectedDate) {
       const localDateString = selectedDate.toISOString().split("T")[0];
-      setPaymentDate(localDateString); 
+      setPaymentDate(localDateString);
     }
   };
   // delete invoice
@@ -630,9 +633,11 @@ export default function ClientDetails() {
 
     const updatedInvoice = {
       ...editSelectedInvoiceItem,
+      number: invoiceNumber,
       items: selectedInvoiceItems,
       total: newTotal,
       remaining,
+      date: new Date(invoiceDate).toLocaleDateString(),
     };
 
     await updateDoc(
@@ -648,12 +653,13 @@ export default function ClientDetails() {
 
     setEditSelectedInvoiceItem(null);
     setSelectedInvoiceItems([]);
-    setEditSelectedInvoice(false); setQtyInputs({})
+    setInvoiceDate(new Date().toLocaleDateString("ar-EG"));
+    setEditSelectedInvoice(false);
+    setQtyInputs({})
+    setInvoiceNumber("")
 
   };
-  console.log('===========nnnnnnnnnnnnnnnnnnnnnnnnn=========================');
-  console.log(invoiceNumber);
-  console.log('====================================');
+
   // function to transfer Remaining of any invoice To LastInvoice
   const transferRemainingToLastInvoice = async (
     clientId: string,
@@ -847,9 +853,26 @@ export default function ClientDetails() {
     setEditPaymentModalVisible(false);
     setPaymentsModalVisible(true);
   };
+  const parseArabicDate = (arabic: string) => {
+    if (!arabic) return new Date();
 
-  console.log('====================================');
-  console.log(selectedInvoice);
+    const clean = arabic.replace(/[\u200f\u200e]/g, "").replace(/\s+/g, "");
+    const parts = clean.split("/");
+
+    if (parts.length !== 3) {
+      return new Date();
+    }
+    const normalize = (str: string) =>
+      str.replace(/[٠-٩]/g, (d) => String("0123456789"["٠١٢٣٤٥٦٧٨٩".indexOf(d)]));
+
+    const day = Number(normalize(parts[0]));
+    const month = Number(normalize(parts[1]));
+    const year = Number(normalize(parts[2]));
+
+    return new Date(year, month - 1, day);
+  };
+  console.log('===============hhhhhhhhhh=====================');
+  console.log(invoiceDate);
   console.log('====================================');
 
   return (
@@ -911,11 +934,16 @@ export default function ClientDetails() {
               {selectedInvoice.note ? (<Text style={{ fontWeight: "bold", fontSize: 16 }}>
                 {selectedInvoice.note}
               </Text>) : ("")}
+              <View >
+                <Text style={{ fontWeight: "bold", fontSize: 16 }}>الدفعات:</Text>
 
+              </View>
               {selectedInvoice.payments?.map((item) => (
-                <View key={item.id} style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 10, paddingHorizontal: 5 }}>
-                  <View style={{ flexDirection: "row" }}>
-                    <Text style={{ fontWeight: "bold", fontSize: 16 }}>دفعة{item.method}:</Text>
+                <View key={item.id} style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 10, paddingHorizontal: 5, backgroundColor: item.method === "خصم" ? "#FFF7A3" : "#fff", }}>
+                  <View style={{
+                    flexDirection: "row"
+                  }}>
+                    <Text style={{ fontWeight: "bold", fontSize: 16 }}>{item.method}:</Text>
                     <Text style={{ fontWeight: "bold", fontSize: 16 }}>
                       {item.amount} جنيه
                     </Text>
@@ -1133,8 +1161,8 @@ export default function ClientDetails() {
                       >
                         <Text style={styles.actionText}>✏️ تعديل</Text>
                       </TouchableOpacity>
-    
-            
+
+
                       <TextInput
                         style={styles.qtyInput}
                         value={
@@ -1179,7 +1207,7 @@ export default function ClientDetails() {
                         }}
                       />
 
-                  
+
                     </View>
 
 
@@ -1197,7 +1225,7 @@ export default function ClientDetails() {
         activeTab === "invoices" && (
           <View style={{ flex: 1, padding: 0, width: 340, position: "relative", left: -14 }}>
             <View>
-          
+
 
               {selectedInvoiceItems.length > 0 ?
 
@@ -1218,7 +1246,37 @@ export default function ClientDetails() {
                         backgroundColor: "#fff453ff"
                       }}
                     />
+                    <View style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between", alignItems: "center"
+                    }}>
+                      <Text>{editSelectedInvoice ? "تعديل تاريخ الفاتوره:" : ""}</Text>
+                      <TouchableOpacity onPress={() => setShowInvoiceDatePicker(true)}>
+                        {editSelectedInvoice ? <Text style={{ marginVertical: 10 }}>
+                          {invoiceDate
+                            ? new Date(invoiceDate).toLocaleDateString("ar-EG")
+                            : ""}
+                          {/* {new Date().toLocaleDateString("ar-EG")} */}
+                        </Text> : ""}
+
+                      </TouchableOpacity></View>
+
+                    {showInvoiceDatePicker && (
+                      <DateTimePicker
+                        value={invoiceDate ? new Date(invoiceDate) : new Date()}
+                        mode="date"
+                        display="default"
+                        onChange={(event, date) => {
+                          setShowInvoiceDatePicker(false);
+                          if (date) {
+                            setInvoiceDate(date.toISOString());
+                          }
+                        }}
+                      />
+                    )}
+
                   </View>
+
 
                   <View style={{ borderWidth: 1 }}>
                     <View
@@ -1430,7 +1488,7 @@ export default function ClientDetails() {
                   onPress={() => { setSelectedInvoice(item) }}
                 >
                   <Text style={{ fontWeight: "bold", textAlign: "center" }}>
-                  رقم الفاتورة: {item.number || "—"}
+                    رقم الفاتورة: {item.number || "—"}
                   </Text>
                   <Text style={{ fontWeight: "bold", textAlign: "center" }}>
                     🧾 تاريخ الفاتورة: {item.date || "—"}
@@ -1723,6 +1781,15 @@ export default function ClientDetails() {
                     style={[styles.button, { paddingHorizontal: 12, backgroundColor: "#34699A" }]}
                     onPress={() => {
                       setSelectedInvoiceItems(selectedInvoice.items);
+                      setInvoiceNumber(selectedInvoice.number || "");
+
+
+                      console.log("ttttttttttttttttttttttttttttt");
+
+                      console.log(parseArabicDate(selectedInvoice.date).toISOString());
+
+                      setInvoiceDate(parseArabicDate(selectedInvoice.date).toISOString());
+
                       setEditSelectedInvoice(true);
                       setEditSelectedInvoiceItem(selectedInvoice);
                       setSelectedInvoice(null);
@@ -1830,6 +1897,7 @@ export default function ClientDetails() {
               <Picker.Item label="نقدا" value="نقدا" />
               <Picker.Item label="فودافون كاش" value="فودافون كاش" />
               <Picker.Item label="أورانج كاش" value="أورانج كاش" />
+              <Picker.Item label="خصم" value="خصم" />
             </Picker>
             <Text style={{ fontWeight: "bold" }}>أضغط علي التاريخ لاختيار تاريخ الدفع:</Text>
 
