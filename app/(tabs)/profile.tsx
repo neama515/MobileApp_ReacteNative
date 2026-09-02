@@ -1,13 +1,12 @@
 import { useRouter } from "expo-router";
 import React from "react";
-import {
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { I18nManager, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../../context/AuthContext";
-import { styles } from "../../css/styles";
+import { styles } from "../../style/styles";
 
+
+I18nManager.allowRTL(false);
+I18nManager.forceRTL(false);
 export default function Home() {
   const { user, logout } = useAuth();
   const router = useRouter();

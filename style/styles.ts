@@ -68,7 +68,7 @@ input: {
     fontSize: 16,
     fontWeight: "bold",
     color: "#3b82f6",
-    textAlign: "right",
+    textAlign: "left",
     marginTop: 10,
   },
   itemBox: {
@@ -92,7 +92,7 @@ input: {
   },
   button: {
     backgroundColor: "#34699A", 
-    padding: 7,
+    paddingVertical: 7,
     borderRadius: 10,
     alignItems: "center",
   },
@@ -143,7 +143,7 @@ clientBox: {
     flexDirection: "row",
     marginTop: 10,
     justifyContent: "center",
-    alignItems:"flex-start",
+    alignItems:"flex-end",
     gap:3
 
   },

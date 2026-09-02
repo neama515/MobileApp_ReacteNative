@@ -4,7 +4,7 @@ export type Band = {
     id: string;
     name: string;
     price: number;
-    type: "كرتونة" | "كيلو" | "بالواحد";
+    type: "كرتونة" | "كيلو" ;
 };
 
 export type InvoiceItem = Band & { qty: number };

@@ -9,10 +9,9 @@ import {
   View,
 } from "react-native";
 import { AuthContext } from "../context/AuthContext";
-import { styles } from "../css/styles";
+import { styles } from "../style/styles";
 
 export default function Index() {
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const authContext = useContext(AuthContext);
@@ -29,7 +28,6 @@ export default function Index() {
       Alert.alert("خطأ", error.message);
     }
   };
-
 
   if (!user) {
     return (
@@ -63,10 +61,15 @@ export default function Index() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity >
+        <TouchableOpacity>
           <Text style={styles.linkText}>
             ليس لديك حساب؟{" "}
-            <Text onPress={() => router.push("/SignUp")} style={styles.linkHighlight}>إنشاء حساب جديد</Text>
+            <Text
+              onPress={() => router.push("/SignUp")}
+              style={styles.linkHighlight}
+            >
+              إنشاء حساب جديد
+            </Text>
           </Text>
         </TouchableOpacity>
       </View>

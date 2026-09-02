@@ -11,24 +11,24 @@ import {
   doc,
   getDoc,
   getDocs,
-  updateDoc
+  updateDoc,
 } from "firebase/firestore";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
   Modal,
-  ScrollView, StatusBar,
+  ScrollView,
+  StatusBar,
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import { captureRef } from "react-native-view-shot";
 import { useAuth } from "../../context/AuthContext";
-import { styles } from "../../css/styles";
+import { styles } from "../../style/styles";
 import { db } from "../firebase/firebase";
-
 
 type Band = {
   id: string;
@@ -37,15 +37,14 @@ type Band = {
   type?: "كيلو" | "عدد";
 };
 type InvoiceItem = Band & { qty: number };
-type PaymentMethod = "نقدا" |
-  "بنك"
+type PaymentMethod =
+  | "نقدا"
+  | "بنك"
   | "بريد"
   | "فودافون كاش"
   | "أورانج كاش"
-  | "خصم"
-  ;
-
-
+  | "اتصالات كاش"
+  | "خصم";
 
 type Invoice = {
   id: string;
@@ -61,16 +60,32 @@ type Invoice = {
   }[];
   remaining: number;
   note?: string;
-  number?: string
+  number?: string;
 };
 
 export default function ClientDetails() {
-  const { name, country } = useLocalSearchParams<{ name: string; country: string }>();
-
+  const { name, country } = useLocalSearchParams<{
+    name: string;
+    country: string;
+  }>();
 
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string; name?: string }>();
+  const params = useLocalSearchParams<{
+    id?: string;
+    name?: string;
+    returnSearch?: string;
+  }>();
   const clientId = params.id as string;
+  const goBackToClients = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    const returnSearch = params.returnSearch || "";
+    router.replace(
+      `/(tabs)/home?search=${encodeURIComponent(returnSearch)}`,
+    );
+  };
 
   const [activeTab, setActiveTab] = useState<"bands" | "invoices">("bands");
 
@@ -96,7 +111,8 @@ export default function ClientDetails() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [editSelectedInvoice, setEditSelectedInvoice] = useState(false);
-  const [editSelectedInvoiceItem, setEditSelectedInvoiceItem] = useState<Invoice | null>(null);
+  const [editSelectedInvoiceItem, setEditSelectedInvoiceItem] =
+    useState<Invoice | null>(null);
   const [paymentAmount, setPaymentAmount] = useState("");
 
   const invoiceRef = useRef<View>(null);
@@ -104,41 +120,47 @@ export default function ClientDetails() {
   const { user } = useAuth();
 
   const [initialPayment, setInitialPayment] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("نقدا" as PaymentMethod);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    "نقدا" as PaymentMethod,
+  );
 
   const [paymentDate, setPaymentDate] = useState<string>(() => {
     const now = new Date();
     return now.toISOString().split("T")[0];
   });
-  console.log('====================================');
+  console.log("====================================");
   console.log(selectedInvoice);
-  console.log('====================================');
+  console.log("====================================");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [paymentModal, setPaymentModal] = useState(false);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceNumberSave, setInvoiceNumberSave] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString());
+  const [invoiceDate, setInvoiceDate] = useState<string>(
+    new Date().toISOString(),
+  );
   const [showInvoiceDatePicker, setShowInvoiceDatePicker] = useState(false);
-
 
   const [paymentsModalVisible, setPaymentsModalVisible] = useState(false);
   const [editPaymentModalVisible, setEditPaymentModalVisible] = useState(false);
   const [editPayment, setEditPayment] = useState<any>(null);
   const [editPaymentAmount, setEditPaymentAmount] = useState("");
-  const [editPaymentDate, setEditPaymentDate] = useState(new Date().toISOString());
+  const [editPaymentDate, setEditPaymentDate] = useState(
+    new Date().toISOString(),
+  );
   const [showEditDatePicker, setShowEditDatePicker] = useState(false);
-  const [editPaymentMethod, setEditPaymentMethod] = useState<PaymentMethod>("نقدا");
+  const [editPaymentMethod, setEditPaymentMethod] =
+    useState<PaymentMethod>("نقدا");
 
-  // Load bands 
+  // Load bands
   useEffect(() => {
     if (!clientId || !user) return;
 
     const fetchBands = async () => {
       try {
         const snapshot = await getDocs(
-          collection(db, "clients", clientId, "items")
+          collection(db, "clients", clientId, "items"),
         );
 
         const fetchedBands = snapshot.docs.map((d) => ({
@@ -160,16 +182,14 @@ export default function ClientDetails() {
     return str.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
   }
 
-  // Load last 15 invoices 
+  // Load last 15 invoices
   useEffect(() => {
     if (!clientId || !user) return;
 
     const fetchInvoices = async () => {
       try {
-
-
         const snapshot = await getDocs(
-          collection(db, "clients", clientId, "invoices")
+          collection(db, "clients", clientId, "invoices"),
         );
 
         const fetchedInvoices = snapshot.docs.map((d) => ({
@@ -178,7 +198,6 @@ export default function ClientDetails() {
         }));
 
         setInvoices(fetchedInvoices);
-
       } catch (err) {
         console.error("Error fetching invoices:", err);
       }
@@ -187,7 +206,7 @@ export default function ClientDetails() {
     fetchInvoices();
   }, [clientId, user]);
 
-  // add band 
+  // add band
   const addBand = async () => {
     if (!newBandName || !newBandPrice || !clientId) return;
     const newBand = {
@@ -200,12 +219,12 @@ export default function ClientDetails() {
     }
     const docRef = await addDoc(
       collection(db, "clients", clientId, "items"),
-      newBand
+      newBand,
     );
     setBands([...bands, { id: docRef.id, ...newBand }]);
     setNewBandName("");
     setNewBandPrice("");
-    setNewBandType(undefined)
+    setNewBandType(undefined);
   };
 
   // edit band
@@ -222,10 +241,10 @@ export default function ClientDetails() {
     }
     await updateDoc(
       doc(db, "clients", clientId, "items", editBandData.id),
-      updated
+      updated,
     );
     setBands((prev) =>
-      prev.map((b) => (b.id === editBandData.id ? { ...b, ...updated } : b))
+      prev.map((b) => (b.id === editBandData.id ? { ...b, ...updated } : b)),
     );
     setEditModalVisible(false);
   };
@@ -243,10 +262,29 @@ export default function ClientDetails() {
   // calc total of payments of an invoice
   const getPaidAmount = (invoice: Invoice) =>
     (invoice.payments || []).reduce((sum, p) => sum + p.amount, 0);
+
+  // الفاتورة المُرحّل إليها مبلغ قديم كانت تحفظ المتبقي فقط. نستخدم الإجمالي
+  // الفعلي للحساب فقط، لكن لا نغيّر total حتى يظل إجمالي الأصناف وحدها.
+  const getEffectiveInvoiceTotal = (invoice: {
+    total?: number;
+    remaining?: number;
+    payments?: { amount?: number }[];
+    items?: { price?: number; qty?: number }[];
+  }) => {
+    const paid = (invoice.payments || []).reduce(
+      (sum, payment) => sum + Number(payment.amount || 0),
+      0,
+    );
+    const itemsTotal = (invoice.items || []).reduce(
+      (sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0),
+      0,
+    );
+    const baseTotal = itemsTotal || Number(invoice.total || 0);
+    return Math.max(baseTotal, Number(invoice.remaining || 0) + paid);
+  };
   console.log("bands");
 
   console.log(bands);
-
 
   // create new invoice
   const createInvoice = async () => {
@@ -278,25 +316,24 @@ export default function ClientDetails() {
 
       const docRef = await addDoc(
         collection(db, "clients", clientId, "invoices"),
-        newInvoice
+        newInvoice,
       );
+      await updateDoc(doc(db, "clients", clientId), {
+        remainingAmount: newInvoice.remaining,
+      });
 
       setInvoices((prev) => [{ id: docRef.id, ...newInvoice }, ...prev]);
-
 
       setSelectedInvoiceItems([]);
       setInitialPayment("");
       setPaymentMethod("بنك");
       setPaymentDate(new Date().toISOString().split("T")[0]);
-      setQtyInputs({})
+      setQtyInputs({});
       setInvoiceNumber("");
-
     } catch (error) {
       console.error("Error creating invoice:", error);
     }
   };
-
-
 
   const onChangeDate = (event: any, selectedDate?: Date) => {
     setShowDatePicker(false);
@@ -308,7 +345,29 @@ export default function ClientDetails() {
   // delete invoice
   const deleteInvoice = async (id: string) => {
     if (!clientId) return;
+    const deletedInvoice = invoices.find((invoice) => invoice.id === id);
+    const isLatestInvoice = deletedInvoice
+      ? invoices.every(
+        (invoice) =>
+          invoice.id === id ||
+          Number(invoice.createdAt || 0) <= Number(deletedInvoice.createdAt || 0),
+      )
+      : false;
+
     await deleteDoc(doc(db, "clients", clientId, "invoices", id));
+
+    const remainingInvoices = await getDocs(
+      collection(db, "clients", clientId, "invoices"),
+    );
+    const remainingAmount =
+      isLatestInvoice || remainingInvoices.empty
+        ? 0
+        : remainingInvoices.docs.reduce(
+          (sum, invoice) => sum + Number(invoice.data().remaining || 0),
+          0,
+        );
+    await updateDoc(doc(db, "clients", clientId), { remainingAmount });
+
     setInvoices((prev) => prev.filter((inv) => inv.id !== id));
   };
 
@@ -321,12 +380,15 @@ export default function ClientDetails() {
     const paymentsHTML =
       invoice.payments && invoice.payments.length > 0
         ? `
-        ${invoice.note ? `
+        ${invoice.note
+          ? `
   <div style="margin-top:20px; border:1px dashed black; padding:10px;">
     <h3 style="margin:0; text-align:center;">ملاحظات</h3>
     <p style="margin:5px 0; text-align:right;">${invoice.note}</p>
   </div>
-` : ""}
+`
+          : ""
+        }
       <h2 style="margin-top:5px; text-align:center;">الدفعات</h2>
       <table>
         <thead>
@@ -345,7 +407,7 @@ export default function ClientDetails() {
                 <td>${p.amount}</td>
                 <td>${new Date(p.date).toISOString().split("T")[0]}</td>
               </tr>
-            `
+            `,
           )
           .join("")}
         </tbody>
@@ -354,13 +416,13 @@ export default function ClientDetails() {
         : `<p style="margin-top:20px; text-align:center; font-weight:bold;">لا يوجد دفعات</p>`;
 
     const html = `
-  <html dir="rtl">
+  <html dir="ltr">
     <head>
       <style>
         body {
           font-family: Arial, sans-serif;
-          direction: rtl;
-          text-align: right;
+          direction: ltr;
+          text-align: left;
         }
         table {
           border-collapse: collapse;
@@ -415,7 +477,7 @@ export default function ClientDetails() {
                 <td>${i.qty}</td>
                 <td>${(i.price * i.qty).toFixed(2)}</td>
               </tr>
-            `
+            `,
         )
         .join("")}
         </tbody>
@@ -436,10 +498,6 @@ export default function ClientDetails() {
     const { uri } = await Print.printToFileAsync({ html });
     if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
   };
-
-
-
-
 
   // function of downloading invoice as an image
   const generateFullInvoiceImage = async (invoice: Invoice) => {
@@ -536,7 +594,7 @@ export default function ClientDetails() {
     clientId: string,
     invoiceId: string,
     method: PaymentMethod,
-    amount: number | string
+    amount: number | string,
   ) => {
     try {
       if (!clientId || !invoiceId) {
@@ -559,7 +617,8 @@ export default function ClientDetails() {
 
       const data = snap.data();
       const total = data.total || 0;
-      const currentRemaining = data.remaining !== undefined ? data.remaining : total;
+      const currentRemaining =
+        data.remaining !== undefined ? data.remaining : total;
       if (parsedAmount > currentRemaining) {
         Alert.alert("خطأ", "المبلغ أكبر من المتبقي");
         return;
@@ -574,7 +633,7 @@ export default function ClientDetails() {
         id: Date.now().toString(),
         method,
         amount: parsedAmount,
-        date: paymentDate
+        date: paymentDate,
       };
 
       const oldPayments = (data.payments || []) as any[];
@@ -585,6 +644,9 @@ export default function ClientDetails() {
         payments: updatedPayments,
         remaining: updatedRemaining,
       });
+      await updateDoc(doc(db, "clients", clientId), {
+        remainingAmount: updatedRemaining,
+      });
 
       // لو بتعرضي الداتا محلياً، حوّلي Timestamp إلى Date للـ UI
       setInvoices((prev) =>
@@ -594,12 +656,16 @@ export default function ClientDetails() {
               ...inv,
               payments: updatedPayments.map((p) => ({
                 ...p,
-                date: p?.date?.toDate ? p.date.toDate() : (typeof p.date === "number" ? new Date(p.date) : p.date),
+                date: p?.date?.toDate
+                  ? p.date.toDate()
+                  : typeof p.date === "number"
+                    ? new Date(p.date)
+                    : p.date,
               })),
               remaining: updatedRemaining,
             }
-            : inv
-        )
+            : inv,
+        ),
       );
 
       setPaymentModal(false);
@@ -610,13 +676,13 @@ export default function ClientDetails() {
       Alert.alert("خطأ", "تعذر إضافة الدفعة");
     }
   };
-  // edit invoice 
+  // edit invoice
   const saveInvoiceChanges = async () => {
     if (!clientId || !editSelectedInvoiceItem) return;
 
     const newTotal = selectedInvoiceItems.reduce(
-      (acc, item) => acc + (item.price * item.qty),
-      0
+      (acc, item) => acc + item.price * item.qty,
+      0,
     );
 
     const oldTotal = editSelectedInvoiceItem.total || 0;
@@ -642,30 +708,31 @@ export default function ClientDetails() {
 
     await updateDoc(
       doc(db, "clients", clientId, "invoices", editSelectedInvoiceItem.id),
-      updatedInvoice
+      updatedInvoice,
     );
+    await updateDoc(doc(db, "clients", clientId), {
+      remainingAmount: updatedInvoice.remaining,
+    });
 
     setInvoices((prev) =>
       prev.map((inv) =>
-        inv.id === editSelectedInvoiceItem.id ? updatedInvoice : inv
-      )
+        inv.id === editSelectedInvoiceItem.id ? updatedInvoice : inv,
+      ),
     );
 
     setEditSelectedInvoiceItem(null);
     setSelectedInvoiceItems([]);
     setInvoiceDate(new Date().toLocaleDateString("ar-EG"));
     setEditSelectedInvoice(false);
-    setQtyInputs({})
-    setInvoiceNumber("")
-
+    setQtyInputs({});
+    setInvoiceNumber("");
   };
 
   // function to transfer Remaining of any invoice To LastInvoice
   const transferRemainingToLastInvoice = async (
     clientId: string,
-    sourceInvoice: { id: string, number?: string },
+    sourceInvoice: { id: string; number?: string },
     lastInvoiceId: string,
-
   ) => {
     try {
       if (sourceInvoice.id === lastInvoiceId) {
@@ -673,7 +740,13 @@ export default function ClientDetails() {
         return;
       }
 
-      const sourceRef = doc(db, "clients", clientId, "invoices", sourceInvoice.id);
+      const sourceRef = doc(
+        db,
+        "clients",
+        clientId,
+        "invoices",
+        sourceInvoice.id,
+      );
       const lastRef = doc(db, "clients", clientId, "invoices", lastInvoiceId);
 
       const sourceSnap = await getDoc(sourceRef);
@@ -688,7 +761,7 @@ export default function ClientDetails() {
       const lastData = lastSnap.data();
 
       const sourceRemaining = sourceData.remaining || 0;
-      const lastRemaining = lastData.remaining || 0;
+      const lastRemaining = Number(lastData.remaining || 0);
 
       if (sourceRemaining <= 0) {
         Alert.alert("تنبيه", "الفاتورة القديمة ليس بها متبقي للترحيل");
@@ -706,22 +779,29 @@ export default function ClientDetails() {
         remaining: 0,
       });
 
+      await updateDoc(doc(db, "clients", clientId), {
+        remainingAmount: updatedLastRemaining,
+      });
 
       setInvoices((prev) =>
         prev.map((inv) => {
           if (inv.id === lastInvoiceId) {
-            return { ...inv, remaining: updatedLastRemaining, note: `مجموع فاتوره ${sourceInvoice.number ? sourceInvoice.number : invoiceNumber} : ${sourceRemaining} جنيه` };
+            return {
+              ...inv,
+              remaining: updatedLastRemaining,
+              note: `مجموع فاتوره ${sourceInvoice.number ? sourceInvoice.number : invoiceNumber} : ${sourceRemaining} جنيه`,
+            };
           }
           if (inv.id === sourceInvoice.id) {
             return { ...inv, remaining: 0 };
           }
           return inv;
-        })
+        }),
       );
 
-      setSelectedInvoice(null)
-      setVisible(false)
-      setInvoiceNumber("")
+      setSelectedInvoice(null);
+      setVisible(false);
+      setInvoiceNumber("");
       Alert.alert("تم", "تم ترحيل المتبقي للفاتورة الأخيرة ✅");
     } catch (err) {
       console.error("خطأ أثناء الترحيل:", err);
@@ -731,12 +811,15 @@ export default function ClientDetails() {
 
   //  حذف دفعة من الفاتورة
   const confirmDeletePayment = (id: string) => {
+    if (!clientId || !selectedInvoice) return;
+    const currentInvoiceId = selectedInvoice.id;
+
     Alert.alert("تأكيد الحذف", "هل تريد حذف هذه الدفعة؟", [
       { text: "إلغاء", style: "cancel" },
       {
         text: "حذف",
         style: "destructive",
-        onPress: () => deletePaymentFromInvoice(clientId!, selectedInvoice!.id, id),
+        onPress: () => deletePaymentFromInvoice(clientId, currentInvoiceId, id),
       },
     ]);
   };
@@ -744,12 +827,11 @@ export default function ClientDetails() {
   const deletePaymentFromInvoice = async (
     clientId: string,
     invoiceId: string,
-    paymentId: string
+    paymentId: string,
   ) => {
     try {
       const invoiceRef = doc(db, "clients", clientId, "invoices", invoiceId);
       const snap = await getDoc(invoiceRef);
-
       if (!snap.exists()) {
         Alert.alert("خطأ", "الفاتورة غير موجودة");
         return;
@@ -757,24 +839,40 @@ export default function ClientDetails() {
 
       const data = snap.data();
       const payments = data.payments || [];
+      const deletedPayment = payments.find((p: any) => p.id === paymentId);
+      if (!deletedPayment) {
+        Alert.alert("خطأ", "الدفعة غير موجودة");
+        return;
+      }
 
       const updatedPayments = payments.filter((p: any) => p.id !== paymentId);
+      // حذف دفعة يزيد المتبقي بقيمتها، فيحتفظ بأي مبالغ مُرحّلة بالفعل.
+      const remaining = Number(data.remaining || 0) + Number(deletedPayment.amount || 0);
 
-      const total = data.total || 0;
-      const paid = updatedPayments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
-      const remaining = total - paid;
+      await updateDoc(invoiceRef, { payments: updatedPayments, remaining });
 
-      await updateDoc(invoiceRef, {
-        payments: updatedPayments,
-        remaining,
-      });
+      // تحديث ملخص العميل لا يجب أن يمنع حذف الدفعة إذا تعذّر مؤقتًا.
+      try {
+        await updateDoc(doc(db, "clients", clientId), { remainingAmount: remaining });
+      } catch (clientUpdateError) {
+        console.warn("Could not update client remaining amount", clientUpdateError);
+      }
 
       setInvoices((prev) =>
         prev.map((inv) =>
           inv.id === invoiceId
-            ? { ...inv, payments: updatedPayments, remaining }
-            : inv
-        )
+            ? {
+              ...inv,
+              payments: updatedPayments,
+              remaining,
+            }
+            : inv,
+        ),
+      );
+      setSelectedInvoice((current) =>
+        current?.id === invoiceId
+          ? { ...current, payments: updatedPayments, remaining }
+          : current,
       );
 
       Alert.alert("تم", "تم حذف الدفعة بنجاح ✅");
@@ -793,7 +891,7 @@ export default function ClientDetails() {
       method: PaymentMethod;
       amount: number;
       date: string;
-    }>
+    }>,
   ) => {
     try {
       const invoiceRef = doc(db, "clients", clientId, "invoices", invoiceId);
@@ -808,26 +906,32 @@ export default function ClientDetails() {
       const payments = data.payments || [];
 
       const updatedPayments = payments.map((p: any) =>
-        p.id === paymentId ? { ...p, ...updatedFields } : p
+        p.id === paymentId ? { ...p, ...updatedFields } : p,
       );
 
-      const total = data.total || 0;
-      const paid = updatedPayments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+      const total = getEffectiveInvoiceTotal(data);
+      const paid = updatedPayments.reduce(
+        (sum: number, p: any) => sum + Number(p.amount || 0),
+        0,
+      );
       const remaining = total - paid;
 
       await updateDoc(invoiceRef, {
         payments: updatedPayments,
         remaining,
       });
+      await updateDoc(doc(db, "clients", clientId), {
+        remainingAmount: remaining,
+      });
 
       setInvoices((prev) =>
         prev.map((inv) =>
           inv.id === invoiceId
             ? { ...inv, payments: updatedPayments, remaining }
-            : inv
-        )
+            : inv,
+        ),
       );
-      setSelectedInvoice(null)
+      setSelectedInvoice(null);
       Alert.alert("تم", "تم تعديل الدفعة بنجاح ✅");
     } catch (error) {
       console.error("خطأ أثناء تعديل الدفعة:", error);
@@ -839,16 +943,11 @@ export default function ClientDetails() {
   const saveEditedPayment = async () => {
     if (!editPayment || !selectedInvoice) return;
 
-    await editPaymentInInvoice(
-      clientId!,
-      selectedInvoice.id,
-      editPayment.id,
-      {
-        amount: parseFloat(editPaymentAmount),
-        date: editPaymentDate,
-        method: editPayment.method,
-      }
-    );
+    await editPaymentInInvoice(clientId!, selectedInvoice.id, editPayment.id, {
+      amount: parseFloat(editPaymentAmount),
+      date: editPaymentDate,
+      method: editPayment.method,
+    });
 
     setEditPaymentModalVisible(false);
     setPaymentsModalVisible(true);
@@ -863,7 +962,9 @@ export default function ClientDetails() {
       return new Date();
     }
     const normalize = (str: string) =>
-      str.replace(/[٠-٩]/g, (d) => String("0123456789"["٠١٢٣٤٥٦٧٨٩".indexOf(d)]));
+      str.replace(/[٠-٩]/g, (d) =>
+        String("0123456789"["٠١٢٣٤٥٦٧٨٩".indexOf(d)]),
+      );
 
     const day = Number(normalize(parts[0]));
     const month = Number(normalize(parts[1]));
@@ -871,107 +972,254 @@ export default function ClientDetails() {
 
     return new Date(year, month - 1, day);
   };
-  console.log('===============hhhhhhhhhh=====================');
+  console.log("===============hhhhhhhhhh=====================");
   console.log(invoiceDate);
-  console.log('====================================');
+  console.log("====================================");
 
   return (
-    <View style={styles.container} >
-
-      {
-        selectedInvoice && (
-          <View
-            ref={invoiceCaptureRef}
-            collapsable={false}
+    <View style={styles.container}>
+      {selectedInvoice && (
+        <View
+          ref={invoiceCaptureRef}
+          collapsable={false}
+          style={{
+            position: "absolute",
+            left: -1000,
+            top: 0,
+            width: 800,
+            padding: 10,
+            backgroundColor: "white",
+          }}
+        >
+          <Text
             style={{
-              position: "absolute",
-              left: -1000,
-              top: 0,
-              width: 800,
-              padding: 10,
-              backgroundColor: "white",
+              fontWeight: "bold",
+              fontSize: 24,
+              textAlign: "center",
+              marginBottom: 1,
             }}
           >
-            <Text style={{ fontWeight: "bold", fontSize: 24, textAlign: "center", marginBottom: 1 }}>
-              فاتورة شراء
-            </Text>
-            <Text style={{ fontWeight: "bold", fontSize: 24, textAlign: "center" }}>
-              {selectedInvoice.number}
-            </Text>
-            <Text style={{ fontWeight: "bold", fontSize: 18, textAlign: "left" }}>اسم العميل: <Text style={{ fontWeight: "400" }}>{name}</Text></Text>
-            <Text style={{ fontWeight: "bold", fontSize: 18, textAlign: "left" }}>البلد: <Text style={{ fontWeight: "400" }}>{country}</Text></Text>
-            <Text style={{ fontWeight: "bold", fontSize: 18, textAlign: "left" }}>التاريخ: <Text style={{ fontWeight: "400" }}>{selectedInvoice.date}</Text></Text>
+            فاتورة شراء
+          </Text>
+          <Text
+            style={{ fontWeight: "bold", fontSize: 24, textAlign: "center" }}
+          >
+            {selectedInvoice.number}
+          </Text>
+          <Text style={{ fontWeight: "bold", fontSize: 18, textAlign: "left" }}>
+            اسم العميل: <Text style={{ fontWeight: "400" }}>{name}</Text>
+          </Text>
+          <Text style={{ fontWeight: "bold", fontSize: 18, textAlign: "left" }}>
+            البلد: <Text style={{ fontWeight: "400" }}>{country}</Text>
+          </Text>
+          <Text style={{ fontWeight: "bold", fontSize: 18, textAlign: "left" }}>
+            التاريخ:{" "}
+            <Text style={{ fontWeight: "400" }}>{selectedInvoice.date}</Text>
+          </Text>
 
-            <View style={{ borderWidth: 1, marginTop: 10 }}>
-              <View style={{ flexDirection: "row", borderBottomWidth: 1 }}>
-                <Text style={{ flex: 1, textAlign: "center", padding: 1 }}>{ }</Text>
+          <View style={{ borderWidth: 1, marginTop: 10 }}>
+            <View style={{ flexDirection: "row", borderBottomWidth: 1 }}>
+              <Text style={{ flex: 1, textAlign: "center", padding: 1 }}>
+                { }
+              </Text>
 
-                <Text style={{ flex: 2, textAlign: "left", fontWeight: "800", padding: 10, borderLeftWidth: 1 }}>الصنف</Text>
-                <Text style={{ flex: 1, textAlign: "center", padding: 10, borderLeftWidth: 1 }}>النوع</Text>
-                <Text style={{ flex: 1, textAlign: "center", padding: 10, borderLeftWidth: 1 }}>العدد</Text>
-                <Text style={{ flex: 1, textAlign: "center", padding: 10, borderLeftWidth: 1 }}>السعر</Text>
-                <Text style={{ flex: 1, textAlign: "center", padding: 10, borderLeftWidth: 1 }}>الإجمالي</Text>
-              </View>
+              <Text
+                style={{
+                  flex: 2,
+                  textAlign: "left",
+                  fontWeight: "800",
+                  padding: 10,
+                  borderLeftWidth: 1,
+                }}
+              >
+                الصنف
+              </Text>
+              <Text
+                style={{
+                  flex: 1,
+                  textAlign: "center",
+                  padding: 10,
+                  borderLeftWidth: 1,
+                }}
+              >
+                النوع
+              </Text>
+              <Text
+                style={{
+                  flex: 1,
+                  textAlign: "center",
+                  padding: 10,
+                  borderLeftWidth: 1,
+                }}
+              >
+                العدد
+              </Text>
+              <Text
+                style={{
+                  flex: 1,
+                  textAlign: "center",
+                  padding: 10,
+                  borderLeftWidth: 1,
+                }}
+              >
+                السعر
+              </Text>
+              <Text
+                style={{
+                  flex: 1,
+                  textAlign: "center",
+                  padding: 10,
+                  borderLeftWidth: 1,
+                }}
+              >
+                الإجمالي
+              </Text>
+            </View>
 
-              {selectedInvoice.items.map((band, index) => (
-                <View key={band.id} style={{ flexDirection: "row", borderBottomWidth: 1 }}>
-                  <Text style={{ flex: 1, textAlign: "center", padding: 1 }}>{index + 1}</Text>
+            {selectedInvoice.items.map((band, index) => (
+              <View
+                key={band.id}
+                style={{ flexDirection: "row", borderBottomWidth: 1 }}
+              >
+                <Text style={{ flex: 1, textAlign: "center", padding: 1 }}>
+                  {index + 1}
+                </Text>
 
-                  <Text style={{ flex: 2, textAlign: "left", fontWeight: "800", padding: 10, borderLeftWidth: 1 }}>{band.name}</Text>
-                  <Text style={{ flex: 1, textAlign: "center", padding: 10, borderLeftWidth: 1 }}>{band.type}</Text>
-                  <Text style={{ flex: 1, textAlign: "center", padding: 10, borderLeftWidth: 1 }}>{band.qty}</Text>
-                  <Text style={{ flex: 1, textAlign: "center", padding: 10, borderLeftWidth: 1 }}>{band.price}</Text>
-                  <Text style={{ flex: 1, textAlign: "center", padding: 10, borderLeftWidth: 1 }}>{(band.qty * band.price).toFixed(2)}</Text>
-                </View>
-              ))}
-
-              <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 10, paddingHorizontal: 5 }}>
-                <Text style={{ fontWeight: "bold", fontSize: 16 }}>الإجمالي الكلي:</Text>
-                <Text style={{ fontWeight: "bold", fontSize: 16 }}>
-                  {selectedInvoice.total} جنيه
+                <Text
+                  style={{
+                    flex: 2,
+                    textAlign: "left",
+                    fontWeight: "800",
+                    padding: 10,
+                    borderLeftWidth: 1,
+                  }}
+                >
+                  {band.name}
+                </Text>
+                <Text
+                  style={{
+                    flex: 1,
+                    textAlign: "center",
+                    padding: 10,
+                    borderLeftWidth: 1,
+                  }}
+                >
+                  {band.type}
+                </Text>
+                <Text
+                  style={{
+                    flex: 1,
+                    textAlign: "center",
+                    padding: 10,
+                    borderLeftWidth: 1,
+                  }}
+                >
+                  {band.qty}
+                </Text>
+                <Text
+                  style={{
+                    flex: 1,
+                    textAlign: "center",
+                    padding: 10,
+                    borderLeftWidth: 1,
+                  }}
+                >
+                  {band.price}
+                </Text>
+                <Text
+                  style={{
+                    flex: 1,
+                    textAlign: "center",
+                    padding: 10,
+                    borderLeftWidth: 1,
+                  }}
+                >
+                  {(band.qty * band.price).toFixed(2)}
                 </Text>
               </View>
-              {selectedInvoice.note ? (<Text style={{ fontWeight: "bold", fontSize: 16 }}>
+            ))}
+
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginTop: 10,
+                paddingHorizontal: 5,
+              }}
+            >
+              <Text style={{ fontWeight: "bold", fontSize: 16 }}>
+                الإجمالي الكلي:
+              </Text>
+              <Text style={{ fontWeight: "bold", fontSize: 16 }}>
+                {calculateTotal(selectedInvoice.items)} جنيه
+              </Text>
+            </View>
+            {selectedInvoice.note ? (
+              <Text style={{ fontWeight: "bold", fontSize: 16 }}>
                 {selectedInvoice.note}
-              </Text>) : ("")}
-              <View >
-                <Text style={{ fontWeight: "bold", fontSize: 16 }}>الدفعات:</Text>
-
-              </View>
-              {selectedInvoice.payments?.map((item) => (
-                <View key={item.id} style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 10, paddingHorizontal: 5, backgroundColor: item.method === "خصم" ? "#FFF7A3" : "#fff", }}>
-                  <View style={{
-                    flexDirection: "row"
-                  }}>
-                    <Text style={{ fontWeight: "bold", fontSize: 16 }}>{item.method}:</Text>
-                    <Text style={{ fontWeight: "bold", fontSize: 16 }}>
-                      {item.amount} جنيه
-                    </Text>
-                  </View>
+              </Text>
+            ) : (
+              ""
+            )}
+            <View style={{
+              flexDirection: "row-reverse",
+            }}>
+              <Text style={{ fontWeight: "bold", fontSize: 16 }}>الدفعات:</Text>
+            </View>
+            {selectedInvoice.payments?.map((item) => (
+              <View
+                key={item.id}
+                style={{
+                  flexDirection: "row-reverse",
+                  justifyContent: "space-between",
+                  marginTop: 10,
+                  paddingHorizontal: 5,
+                  backgroundColor: item.method === "خصم" ? "#FFF7A3" : "#fff",
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                  }}
+                >
                   <Text style={{ fontWeight: "bold", fontSize: 16 }}>
-                    بتاريخ: {new Date(item.date).toISOString().split("T")[0]}
+                    {item.method}:
                   </Text>
-
-
-                </View>))}
-
-              <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 10, paddingHorizontal: 5, backgroundColor: "#a4bbd0ff" }}>
-                <Text style={{ fontWeight: "bold", fontSize: 16 }}>المتبقي:</Text>
+                  <Text style={{ fontWeight: "bold", fontSize: 16 }}>
+                    {item.amount} جنيه
+                  </Text>
+                </View>
                 <Text style={{ fontWeight: "bold", fontSize: 16 }}>
-                  {selectedInvoice.remaining} جنيه
+                  بتاريخ: {new Date(item.date).toISOString().split("T")[0]}
                 </Text>
               </View>
+            ))}
 
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginTop: 10,
+                paddingHorizontal: 5,
+                backgroundColor: "#a4bbd0ff",
+              }}
+            >
+              <Text style={{ fontWeight: "bold", fontSize: 16 }}>المتبقي:</Text>
+              <Text style={{ fontWeight: "bold", fontSize: 16 }}>
+                {selectedInvoice.remaining} جنيه
+              </Text>
             </View>
           </View>
-        )
-      }
+        </View>
+      )}
 
-
-      < View >
+      <View>
         <TouchableOpacity
-          style={[styles.button, { flexDirection: "row", paddingVertical: 10, marginBottom: 0 }]}
-          onPress={() => router.back()}
+          style={[
+            styles.button,
+            { flexDirection: "row", paddingVertical: 10, marginBottom: 0 },
+          ]}
+          onPress={goBackToClients}
         >
           <Ionicons
             name="arrow-forward"
@@ -982,7 +1230,7 @@ export default function ClientDetails() {
           <Text style={[styles.buttonText]}>الرجوع</Text>
         </TouchableOpacity>
         {/* Tabs */}
-        < View
+        <View
           style={{
             flexDirection: "row",
             justifyContent: "center",
@@ -1002,350 +1250,389 @@ export default function ClientDetails() {
               الفواتير
             </Text>
           </TouchableOpacity>
-        </View >
-      </View >
+        </View>
+      </View>
       {/* Tab Bands */}
-      {
-        activeTab === "bands" && (
-          <View>
-            <TextInput
-              placeholder="اسم الصنف" placeholderTextColor={"#000"}
+      {activeTab === "bands" && (
+        <View>
+          <TextInput
+            placeholder="اسم الصنف"
+            placeholderTextColor={"#000"}
+            value={newBandName}
+            onChangeText={setNewBandName}
+            style={styles.input}
+          />
+          <TextInput
+            placeholder="السعر لكل وحدة"
+            placeholderTextColor={"#000"}
+            value={newBandPrice}
+            onChangeText={setNewBandPrice}
+            keyboardType="numeric"
+            style={styles.input}
+          />
 
-              value={newBandName}
-              onChangeText={setNewBandName}
-              style={styles.input}
-            />
-            <TextInput
-              placeholder="السعر لكل وحدة" placeholderTextColor={"#000"}
-
-              value={newBandPrice}
-              onChangeText={setNewBandPrice}
-              keyboardType="numeric"
-              style={styles.input}
-            />
-
-            <View style={{ flexDirection: "row", gap: 10, marginBottom: 7 }}>
-              {(["عدد", "كيلو"] as const).map((t) => (
-                <TouchableOpacity
-                  key={t}
-                  onPress={() => setNewBandType(t)}
-                  style={[
-                    styles.typeBtn, { paddingHorizontal: 20 },
-                    newBandType === t && { backgroundColor: "#34699A" },
-                  ]}
-                >
-                  <Text style={{ color: newBandType === t ? "white" : "black" }}>
-                    {t}
-                  </Text>
-                </TouchableOpacity>
-
-              ))}
-              <TouchableOpacity style={[styles.button, { paddingHorizontal: 43 }]} onPress={addBand}>
-                <Text style={styles.buttonText}>إضافة صنف</Text>
+          <View style={{ flexDirection: "row", gap: 10, marginBottom: 7 }}>
+            {(["عدد", "كيلو"] as const).map((t) => (
+              <TouchableOpacity
+                key={t}
+                onPress={() => setNewBandType(t)}
+                style={[
+                  styles.typeBtn,
+                  { paddingHorizontal: 20 },
+                  newBandType === t && { backgroundColor: "#34699A" },
+                ]}
+              >
+                <Text style={{ color: newBandType === t ? "white" : "black" }}>
+                  {t}
+                </Text>
               </TouchableOpacity>
-            </View>
-
-
-
-            <TextInput
-              placeholder="ابحث عن بند..."
-              placeholderTextColor={"#000"}
-              value={searchTerm}
-              onChangeText={setSearchTerm}
-              style={[styles.input, { marginVertical: 0 }]}
-            />
+            ))}
+            <TouchableOpacity
+              style={[styles.button, { paddingHorizontal: 22 }]}
+              onPress={addBand}
+            >
+              <Text style={styles.buttonText}>إضافة صنف</Text>
+            </TouchableOpacity>
           </View>
-        )
-      }
 
-      {
-        activeTab === "bands" && (
-          <View style={{ flex: 1 }}>
-            <FlatList
-              data={bands.filter((b) =>
-                b.name.toLowerCase().includes(searchTerm.toLowerCase())
-              )}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item: band }) => {
-                const existing = selectedInvoiceItems.find(
-                  (i) => i.id === band.id
-                );
-                const qty = existing?.qty ?? 0;
+          <TextInput
+            placeholder="ابحث عن بند..."
+            placeholderTextColor={"#000"}
+            value={searchTerm}
+            onChangeText={setSearchTerm}
+            style={[styles.input, { marginVertical: 0 }]}
+          />
+        </View>
+      )}
 
-                return (
+      {activeTab === "bands" && (
+        <View style={{ flex: 1 }}>
+          <FlatList
+            data={bands.filter((b) =>
+              b.name.toLowerCase().includes(searchTerm.toLowerCase()),
+            )}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item: band }) => {
+              const existing = selectedInvoiceItems.find(
+                (i) => i.id === band.id,
+              );
+              const qty = existing?.qty ?? 0;
+
+              return (
+                <View
+                  style={{
+                    flexDirection: "column",
+                    marginBottom: 10,
+                    borderWidth: 1,
+                    paddingBottom: 10,
+                    borderRadius: 10,
+                  }}
+                  key={band.id}
+                >
                   <View
-                    style={{ flexDirection: "column", marginBottom: 10, borderWidth: 1, paddingBottom: 10, borderRadius: 10 }}
-                    key={band.id}
+                    style={{
+                      flexDirection: "row",
+                      borderBottomWidth: 1,
+                      borderColor: "#475569",
+                    }}
                   >
-                    <View
+                    <Text
                       style={{
-                        flexDirection: "row",
-                        borderBottomWidth: 1,
-                        borderColor: "#475569",
+                        flex: 2,
+                        color: "#000",
+                        fontWeight: "800",
+                        textAlign: "left",
+                        paddingLeft: 3,
+                        paddingVertical: 10,
+
                       }}
                     >
-                      <Text
-                        style={{
-                          flex: 2,
-                          color: "#000",
-                          fontWeight: "800",
-                          textAlign: "left", paddingLeft: 3,
-                          paddingVertical: 10
-                        }}
-                      >
-                        {band.name}
-                      </Text>
-                      <Text
-                        style={{
-                          flex: 1, color: "#000", textAlign: "center", borderLeftWidth: 1
-                          , textAlignVertical: "center",
-                          paddingVertical: 10
-                        }}
-                      >
-                        {band.type}
-                      </Text>
-                      <Text
-                        style={{
-                          flex: 1, color: "#000", textAlign: "center", textAlignVertical: "center"
-                          , paddingVertical: 10, borderLeftWidth: 1
-
-                        }}
-                      >
-                        {band.price} جنيه
-                      </Text>
-                    </View>
-
-                    <View
+                      {band.name}
+                    </Text>
+                    <Text
                       style={{
-                        flexDirection: "row-reverse",
-                        gap: 5,
-                        alignItems: "center",
-                        justifyContent: "center",
+                        flex: 1,
+                        color: "#000",
+                        textAlign: "center",
+                        borderLeftWidth: 1,
+                        textAlignVertical: "center",
+                        paddingVertical: 10,
                       }}
                     >
+                      {band.type}
+                    </Text>
+                    <Text
+                      style={{
+                        flex: 1,
+                        color: "#000",
+                        textAlign: "center",
+                        textAlignVertical: "center",
+                        paddingVertical: 10, borderLeftWidth: 1,
 
-                      <TouchableOpacity
-                        style={[
-                          styles.actionButton,
-                          { backgroundColor: "#8C1007", paddingHorizontal: 0 },
-                        ]}
-                        onPress={() => {
-                          Alert.alert(
-                            "تأكيد الحذف",
-                            "هل أنت متأكد من حذف هذا البند؟",
-                            [
-                              { text: "إلغاء", style: "cancel" },
-                              {
-                                text: "حذف",
-                                style: "destructive",
-                                onPress: () => deleteBand(band.id),
-                              },
-                            ]
-                          );
-                        }}
-                      >
-                        <Text style={styles.actionText}>🗑 حذف</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.actionButton,
-                          { backgroundColor: "#ebbf24", paddingHorizontal: 0 },
-                        ]}
-                        onPress={() => {
-                          setEditBandData(band);
-                          setEditName(band.name);
-                          setEditPrice(band.price.toString());
-                          setEditType(band.type);
-                          setEditModalVisible(true);
-                        }}
-                      >
-                        <Text style={styles.actionText}>✏️ تعديل</Text>
-                      </TouchableOpacity>
-
-
-                      <TextInput
-                        style={styles.qtyInput}
-                        value={
-                          qtyInputs[band.id] ??
-                          (selectedInvoiceItems.find(i => i.id === band.id)?.qty.toString() ?? "")
-                        }
-                        keyboardType="numeric"
-                        onChangeText={(v) => {
-                          let val = arabicToEnglishNumbers(v);
-
-                          if (val === ".") {
-                            val = "0.";
-                          }
-
-                          if (!val.includes(".")) {
-                            val = val.replace(/^0+(?=\d)/, "");
-                          }
-
-                          setQtyInputs((prev) => ({ ...prev, [band.id]: val }));
-
-                          if (val !== "." && val !== "0." && val !== "") {
-                            const n = parseFloat(val) || 0;
-
-                            if (existing) {
-                              const updated = selectedInvoiceItems
-                                .map((i) =>
-                                  i.id === band.id ? { ...i, qty: n } : i
-                                )
-                                .filter((i) => i.qty > 0);
-                              setSelectedInvoiceItems(updated);
-                            } else if (n > 0) {
-                              setSelectedInvoiceItems([
-                                ...selectedInvoiceItems,
-                                { ...band, qty: n },
-                              ]);
-                            }
-                          } else {
-                            setSelectedInvoiceItems((prev) =>
-                              prev.filter((i) => i.id !== band.id)
-                            );
-                          }
-                        }}
-                      />
-
-
-                    </View>
-
-
-
+                      }}
+                    >
+                      {band.price} جنيه
+                    </Text>
                   </View>
-                );
-              }}
-            />
-          </View>
-        )
-      }
 
-      {/* Tab Invoices */}
-      {
-        activeTab === "invoices" && (
-          <View style={{ flex: 1, padding: 0, width: 340, position: "relative", left: -14 }}>
-            <View>
+                  <View
+                    style={{
+                      flexDirection: "row-reverse",
+                      gap: 5,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <TouchableOpacity
+                      style={[
+                        styles.actionButton,
+                        { backgroundColor: "#8C1007", paddingHorizontal: 0 },
+                      ]}
+                      onPress={() => {
+                        Alert.alert(
+                          "تأكيد الحذف",
+                          "هل أنت متأكد من حذف هذا البند؟",
+                          [
+                            { text: "إلغاء", style: "cancel" },
+                            {
+                              text: "حذف",
+                              style: "destructive",
+                              onPress: () => deleteBand(band.id),
+                            },
+                          ],
+                        );
+                      }}
+                    >
+                      <Text style={styles.actionText}>🗑 حذف</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.actionButton,
+                        { backgroundColor: "#ebbf24", paddingHorizontal: 0 },
+                      ]}
+                      onPress={() => {
+                        setEditBandData(band);
+                        setEditName(band.name);
+                        setEditPrice(band.price.toString());
+                        setEditType(band.type);
+                        setEditModalVisible(true);
+                      }}
+                    >
+                      <Text style={styles.actionText}>✏️ تعديل</Text>
+                    </TouchableOpacity>
 
-
-              {selectedInvoiceItems.length > 0 ?
-
-                (<View>
-                  <View style={{ marginBottom: 10 }}>
                     <TextInput
-                      value={invoiceNumber}
-                      onChangeText={(text) => { setInvoiceNumber(text) }}
-                      placeholder="أدخل رقم الفاتورة"
-                      placeholderTextColor="black"
+                      style={styles.qtyInput}
+                      value={
+                        qtyInputs[band.id] ??
+                        selectedInvoiceItems
+                          .find((i) => i.id === band.id)
+                          ?.qty.toString() ??
+                        ""
+                      }
                       keyboardType="numeric"
-                      style={{
-                        borderWidth: 1,
-                        borderColor: "black",
-                        borderRadius: 8,
-                        padding: 8,
-                        marginTop: 5,
-                        backgroundColor: "#fff453ff"
+                      onChangeText={(v) => {
+                        let val = arabicToEnglishNumbers(v);
+
+                        if (val === ".") {
+                          val = "0.";
+                        }
+
+                        if (!val.includes(".")) {
+                          val = val.replace(/^0+(?=\d)/, "");
+                        }
+
+                        setQtyInputs((prev) => ({ ...prev, [band.id]: val }));
+
+                        if (val !== "." && val !== "0." && val !== "") {
+                          const n = parseFloat(val) || 0;
+
+                          if (existing) {
+                            const updated = selectedInvoiceItems
+                              .map((i) =>
+                                i.id === band.id ? { ...i, qty: n } : i,
+                              )
+                              .filter((i) => i.qty > 0);
+                            setSelectedInvoiceItems(updated);
+                          } else if (n > 0) {
+                            setSelectedInvoiceItems([
+                              ...selectedInvoiceItems,
+                              { ...band, qty: n },
+                            ]);
+                          }
+                        } else {
+                          setSelectedInvoiceItems((prev) =>
+                            prev.filter((i) => i.id !== band.id),
+                          );
+                        }
                       }}
                     />
-                    <View style={{
+                  </View>
+                </View>
+              );
+            }}
+          />
+        </View>
+      )}
+
+      {/* Tab Invoices */}
+      {activeTab === "invoices" && (
+        <View
+          style={{
+            flex: 1,
+            padding: 0,
+            width: 340,
+            position: "relative",
+            left: -14,
+          }}
+        >
+          <View>
+            {selectedInvoiceItems.length > 0 ? (
+              <View>
+                <View style={{ marginBottom: 10 }}>
+                  <TextInput
+                    value={invoiceNumber}
+                    onChangeText={(text) => {
+                      setInvoiceNumber(text);
+                    }}
+                    placeholder="أدخل رقم الفاتورة"
+                    placeholderTextColor="black"
+                    keyboardType="numeric"
+                    style={{
+                      borderWidth: 1,
+                      borderColor: "black",
+                      borderRadius: 8,
+                      padding: 8,
+                      marginTop: 5,
+                      backgroundColor: "#fff453ff",
+                    }}
+                  />
+                  <View
+                    style={{
                       flexDirection: "row",
-                      justifyContent: "space-between", alignItems: "center"
-                    }}>
-                      <Text>{editSelectedInvoice ? "تعديل تاريخ الفاتوره:" : ""}</Text>
-                      <TouchableOpacity onPress={() => setShowInvoiceDatePicker(true)}>
-                        {editSelectedInvoice ? <Text style={{ marginVertical: 10 }}>
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text>
+                      {editSelectedInvoice ? "تعديل تاريخ الفاتوره:" : ""}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setShowInvoiceDatePicker(true)}
+                    >
+                      {editSelectedInvoice ? (
+                        <Text style={{ marginVertical: 10 }}>
                           {invoiceDate
                             ? new Date(invoiceDate).toLocaleDateString("ar-EG")
                             : ""}
                           {/* {new Date().toLocaleDateString("ar-EG")} */}
-                        </Text> : ""}
-
-                      </TouchableOpacity></View>
-
-                    {showInvoiceDatePicker && (
-                      <DateTimePicker
-                        value={invoiceDate ? new Date(invoiceDate) : new Date()}
-                        mode="date"
-                        display="default"
-                        onChange={(event, date) => {
-                          setShowInvoiceDatePicker(false);
-                          if (date) {
-                            setInvoiceDate(date.toISOString());
-                          }
-                        }}
-                      />
-                    )}
-
+                        </Text>
+                      ) : (
+                        ""
+                      )}
+                    </TouchableOpacity>
                   </View>
 
+                  {showInvoiceDatePicker && (
+                    <DateTimePicker
+                      value={invoiceDate ? new Date(invoiceDate) : new Date()}
+                      mode="date"
+                      display="default"
+                      onChange={(event, date) => {
+                        setShowInvoiceDatePicker(false);
+                        if (date) {
+                          setInvoiceDate(date.toISOString());
+                        }
+                      }}
+                    />
+                  )}
+                </View>
 
-                  <View style={{ borderWidth: 1 }}>
-                    <View
+                <View style={{ borderWidth: 1 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      borderBottomWidth: 1,
+                      borderColor: "#475569",
+                    }}
+                  >
+                    <Text
                       style={{
-                        flexDirection: "row",
-                        borderBottomWidth: 1,
-                        borderColor: "#475569",
+                        flex: 0.5,
+                        color: "#000",
+                        fontWeight: "800",
+                        textAlign: "center",
+                        paddingRight: 7,
+                        paddingVertical: 10, borderLeftWidth: 1,
+
+                      }}
+                    ></Text>
+                    <Text
+                      style={{
+                        flex: 1.5,
+                        color: "#000",
+                        fontWeight: "800",
+                        textAlign: "left",
+                        paddingRight: 7,
+                        paddingVertical: 10,
+                        borderLeftWidth: 1,
                       }}
                     >
-                      <Text
-                        style={{
-                          flex: 0.5,
-                          color: "#000",
-                          fontWeight: "800",
-                          textAlign: "center", paddingRight: 7
-                          , paddingVertical: 10
-                        }}
-                      >
-                      </Text>
-                      <Text
-                        style={{
-                          flex: 1.5,
-                          color: "#000",
-                          fontWeight: "800",
-                          textAlign: "left", paddingRight: 7
-                          , paddingVertical: 10, borderLeftWidth: 1,
-
-                        }}
-                      >
-                        الصنف
-                      </Text>
-                      <Text
-                        style={{
-                          flex: 1, color: "#000", textAlign: "center", borderLeftWidth: 1
-                          , textAlignVertical: "center",
-                          paddingVertical: 10
-                        }}
-                      >
-                        النوع
-                      </Text>
-                      <Text
-                        style={{
-                          flex: 1, color: "#000", textAlign: "center", borderLeftWidth: 1
-                          , textAlignVertical: "center",
-                          paddingVertical: 10
-                        }}
-                      >
-                        العدد
-                      </Text>
-                      <Text
-                        style={{
-                          flex: 1, color: "#000", textAlign: "center", borderLeftWidth: 1
-                          , textAlignVertical: "center",
-                          paddingVertical: 10
-                        }}
-                      >
-                        السعر
-                      </Text>
-                      <Text
-                        style={{
-                          flex: 1, color: "#000", textAlign: "center", textAlignVertical: "center"
-                          , paddingVertical: 10, width: 300, borderLeftWidth: 1
-                        }}
-                      >
-                        الإجمالي
-                      </Text>
-                    </View>
-                    <ScrollView style={{ maxHeight: 300 }}>
-                      {selectedInvoiceItems.filter(band => band.qty !== 0).map((band, index) => (
+                      الصنف
+                    </Text>
+                    <Text
+                      style={{
+                        flex: 1,
+                        color: "#000",
+                        textAlign: "center",
+                        borderLeftWidth: 1,
+                        textAlignVertical: "center",
+                        paddingVertical: 10,
+                      }}
+                    >
+                      النوع
+                    </Text>
+                    <Text
+                      style={{
+                        flex: 1,
+                        color: "#000",
+                        textAlign: "center",
+                        borderLeftWidth: 1,
+                        textAlignVertical: "center",
+                        paddingVertical: 10,
+                      }}
+                    >
+                      العدد
+                    </Text>
+                    <Text
+                      style={{
+                        flex: 1,
+                        color: "#000",
+                        textAlign: "center",
+                        borderLeftWidth: 1,
+                        textAlignVertical: "center",
+                        paddingVertical: 10,
+                      }}
+                    >
+                      السعر
+                    </Text>
+                    <Text
+                      style={{
+                        flex: 1,
+                        color: "#000",
+                        textAlign: "center",
+                        textAlignVertical: "center",
+                        paddingVertical: 10,
+                        width: 300,
+                      }}
+                    >
+                      الإجمالي
+                    </Text>
+                  </View>
+                  <ScrollView style={{ maxHeight: 300 }}>
+                    {selectedInvoiceItems
+                      .filter((band) => band.qty !== 0)
+                      .map((band, index) => (
                         <View
                           style={{
                             flexDirection: "row",
@@ -1361,7 +1648,8 @@ export default function ClientDetails() {
                               fontWeight: "800",
                               textAlign: "center",
                               paddingRight: 10,
-                              paddingVertical: 10
+                              paddingVertical: 10, borderLeftWidth: 1,
+
                             }}
                           >
                             {index + 1}
@@ -1371,10 +1659,10 @@ export default function ClientDetails() {
                               flex: 1.5,
                               color: "#000",
                               fontWeight: "800",
-                              textAlign: "left",
+                              textAlign: "right",
                               paddingRight: 10,
-                              paddingVertical: 10, borderLeftWidth: 1,
-
+                              paddingVertical: 10,
+                              borderLeftWidth: 1,
                             }}
                           >
                             {band.name}
@@ -1386,7 +1674,7 @@ export default function ClientDetails() {
                               textAlign: "center",
                               borderLeftWidth: 1,
                               textAlignVertical: "center",
-                              paddingVertical: 10
+                              paddingVertical: 10,
                             }}
                           >
                             {band.type}
@@ -1398,7 +1686,7 @@ export default function ClientDetails() {
                               textAlign: "center",
                               borderLeftWidth: 1,
                               textAlignVertical: "center",
-                              paddingVertical: 10
+                              paddingVertical: 10,
                             }}
                           >
                             {band.qty}
@@ -1410,7 +1698,7 @@ export default function ClientDetails() {
                               textAlign: "center",
                               borderLeftWidth: 1,
                               textAlignVertical: "center",
-                              paddingVertical: 10
+                              paddingVertical: 10,
                             }}
                           >
                             {band.price}
@@ -1421,91 +1709,121 @@ export default function ClientDetails() {
                               color: "#000",
                               textAlign: "center",
                               textAlignVertical: "center",
-                              paddingVertical: 10, borderLeftWidth: 1,
-
+                              paddingVertical: 10,
                             }}
                           >
                             {(band.qty * band.price).toFixed(2)}
                           </Text>
-
-
-
                         </View>
                       ))}
-                    </ScrollView>
+                  </ScrollView>
 
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 3 }}>
-                      <Text style={{
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      paddingHorizontal: 3,
+                    }}
+                  >
+                    <Text
+                      style={{
                         fontWeight: "bold",
                         fontSize: 16,
                         marginVertical: 5,
                         marginRight: 0,
-                        textAlign: "center"
-                      }}>الإجمالي الكلي:
-                      </Text>
-                      <Text style={{
+                        textAlign: "center",
+                      }}
+                    >
+                      الإجمالي الكلي:
+                    </Text>
+                    <Text
+                      style={{
                         fontWeight: "bold",
                         fontSize: 16,
                         textAlign: "left",
-                        marginVertical: 5
-                      }}>
-                        {selectedInvoiceItems.reduce((sum, b) => sum + b.qty * b.price, 0).toFixed(2)} جنيه
-                      </Text>
-                    </View>
-
-
-
-
-
+                        marginVertical: 5,
+                      }}
+                    >
+                      {selectedInvoiceItems
+                        .reduce((sum, b) => sum + b.qty * b.price, 0)
+                        .toFixed(2)}{" "}
+                      جنيه
+                    </Text>
                   </View>
+                </View>
 
-
-                  <TouchableOpacity
-                    disabled={!invoiceNumber?.trim()}
-
-                    style={[styles.button, { marginVertical: 5, backgroundColor: !invoiceNumber?.trim() ? "gray" : "#34699A", }]}
-                    onPress={editSelectedInvoice ? saveInvoiceChanges : createInvoice}
-                  >
-                    <Text style={styles.buttonText}>{editSelectedInvoice ? "حفظ التعديلات" : "إنشاء فاتورة جديدة"}</Text>
-                  </TouchableOpacity></View>) : (<Text>لم يتم اختيار الأصناف بعد</Text>)
-              }
-
-
-            </View>
-
-
-            <FlatList
-              style={{ flex: 1 }}
-              data={[...invoices].sort((a, b) => {
-                const dateA = a.createdAt || 0;
-                const dateB = b.createdAt || 0;
-                return dateB - dateA;
-              })}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={styles.clientBox}
-                  onPress={() => { setSelectedInvoice(item) }}
+                  disabled={!invoiceNumber?.trim()}
+                  style={[
+                    styles.button,
+                    {
+                      marginVertical: 5,
+                      backgroundColor: !invoiceNumber?.trim()
+                        ? "gray"
+                        : "#34699A",
+                    },
+                  ]}
+                  onPress={
+                    editSelectedInvoice ? saveInvoiceChanges : createInvoice
+                  }
                 >
-                  <Text style={{ fontWeight: "bold", textAlign: "center" }}>
-                    رقم الفاتورة: {item.number || "—"}
-                  </Text>
-                  <Text style={{ fontWeight: "bold", textAlign: "center" }}>
-                    🧾 تاريخ الفاتورة: {item.date || "—"}
+                  <Text style={styles.buttonText}>
+                    {editSelectedInvoice
+                      ? "حفظ التعديلات"
+                      : "إنشاء فاتورة جديدة"}
                   </Text>
                 </TouchableOpacity>
-              )}
-            />
-
-
+              </View>
+            ) : (
+              <Text>لم يتم اختيار الأصناف بعد</Text>
+            )}
           </View>
-        )
-      }
 
-      <Modal visible={editModalVisible} transparent animationType="slide" onRequestClose={() => setEditModalVisible(false)}
+          <FlatList
+            style={{ flex: 1 }}
+            data={[...invoices].sort((a, b) => {
+              const dateA = a.createdAt || 0;
+              const dateB = b.createdAt || 0;
+              return dateB - dateA;
+            })}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.clientBox}
+                onPress={() => {
+                  setSelectedInvoice(item);
+                }}
+              >
+                <Text style={{ fontWeight: "bold", textAlign: "center" }}>
+                  رقم الفاتورة: {item.number || "—"}
+                </Text>
+                <Text style={{ fontWeight: "bold", textAlign: "center" }}>
+                  🧾 تاريخ الفاتورة: {item.date || "—"}
+                </Text>
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      )}
+
+      <Modal
+        visible={editModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalBox, { flex: 1, width: "100%", backgroundColor: "white", paddingTop: 120 }]}>
+          <View
+            style={[
+              styles.modalBox,
+              {
+                flex: 1,
+                width: "100%",
+                backgroundColor: "white",
+                paddingTop: 120,
+              },
+            ]}
+          >
             <Text
               style={{
                 fontWeight: 900,
@@ -1545,7 +1863,10 @@ export default function ClientDetails() {
                 </TouchableOpacity>
               ))}
             </View>
-            <TouchableOpacity style={[styles.button, { marginVertical: 10 }]} onPress={saveEditedBand}>
+            <TouchableOpacity
+              style={[styles.button, { marginVertical: 10 }]}
+              onPress={saveEditedBand}
+            >
               <Text style={styles.buttonText}>حفظ</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -1558,22 +1879,38 @@ export default function ClientDetails() {
         </View>
       </Modal>
 
-      <Modal visible={!!selectedInvoice} transparent={false} animationType="slide" onRequestClose={() => setSelectedInvoice(null)}
+      <Modal
+        visible={!!selectedInvoice}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => setSelectedInvoice(null)}
       >
-
         <StatusBar hidden />
 
-
-        <View style={[styles.modalOverlay, {
-          flex: 1,
-          backgroundColor: "white"
-        }]}>
+        <View
+          style={[
+            styles.modalOverlay,
+            {
+              flex: 1,
+              backgroundColor: "white",
+            },
+          ]}
+        >
           <View
-            style={[styles.modalBox, { flex: 1, width: "100%", backgroundColor: "white", paddingTop: 20 }]}>
-
+            style={[
+              styles.modalBox,
+              {
+                flex: 1,
+                width: "100%",
+                backgroundColor: "white",
+                paddingTop: 20,
+              },
+            ]}
+          >
             {selectedInvoice && (
-              <View style={[{ flex: 1, width: "100%", backgroundColor: "white", }]}>
-
+              <View
+                style={[{ flex: 1, width: "100%", backgroundColor: "white" }]}
+              >
                 <View style={[styles.actions, { margin: 0 }]}>
                   <TouchableOpacity
                     style={[styles.button, { margin: 0 }]}
@@ -1590,7 +1927,9 @@ export default function ClientDetails() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.button, { paddingHorizontal: 40 }]}
-                    onPress={() => { setSelectedInvoice(null) }}
+                    onPress={() => {
+                      setSelectedInvoice(null);
+                    }}
                   >
                     <Text style={styles.buttonText}>إغلاق</Text>
                   </TouchableOpacity>
@@ -1600,63 +1939,196 @@ export default function ClientDetails() {
                   ref={invoiceRef}
                   collapsable={false}
                   style={{
-                    padding: 0, margin: 0
+                    padding: 0,
+                    margin: 0,
                   }}
                 >
-                  <Text style={{ fontWeight: "bold", fontSize: 20, textAlign: "center", margin: 0, padding: 0 }}>
+                  <Text
+                    style={{
+                      fontWeight: "bold",
+                      fontSize: 20,
+                      textAlign: "center",
+                      margin: 0,
+                      padding: 0,
+                    }}
+                  >
                     فاتورة شراء
                   </Text>
 
-                  <Text style={{ fontWeight: "bold", fontSize: 20, textAlign: "center" }}>
+                  <Text
+                    style={{
+                      fontWeight: "bold",
+                      fontSize: 20,
+                      textAlign: "center",
+                    }}
+                  >
                     {selectedInvoice.number}
                   </Text>
-                  <Text style={{ fontWeight: "bold", fontSize: 16, textAlign: "left", margin: 0, padding: 0 }}>
+                  <Text
+                    style={{
+                      fontWeight: "bold",
+                      fontSize: 16,
+                      textAlign: "right",
+                      margin: 0,
+                      padding: 0,
+                    }}
+                  >
                     اسم العميل:
                     <Text style={{ fontWeight: "400" }}>{name}</Text>
                   </Text>
 
-                  <Text style={{ fontWeight: "bold", fontSize: 16, textAlign: "left", margin: 0, padding: 0 }}>
+                  <Text
+                    style={{
+                      fontWeight: "bold",
+                      fontSize: 16,
+                      textAlign: "right",
+                      margin: 0,
+                      padding: 0,
+                    }}
+                  >
                     البلد:
                     <Text style={{ fontWeight: "400" }}>{country}</Text>
                   </Text>
 
-                  <Text style={{ fontWeight: "bold", fontSize: 16, textAlign: "left", margin: 0, padding: 0 }}>
+                  <Text
+                    style={{
+                      fontWeight: "bold",
+                      fontSize: 16,
+                      textAlign: "right",
+                      margin: 0,
+                      padding: 0,
+                    }}
+                  >
                     التاريخ:
-                    <Text style={{ fontWeight: "400" }}>{selectedInvoice.date}</Text>
+                    <Text style={{ fontWeight: "400" }}>
+                      {selectedInvoice.date}
+                    </Text>
                   </Text>
 
                   <View style={{ borderWidth: 1, marginTop: 0 }}>
-                    <View style={{ flexDirection: "row", borderBottomWidth: 1 }}>
-                      <Text style={{ flex: 1, textAlign: "center", padding: 1 }}></Text>
+                    <View
+                      style={{ flexDirection: "row-reverse", borderBottomWidth: 1 }}
+                    >
+                      <Text
+                        style={{ flex: 1, textAlign: "center", padding: 1 }}
+                      ></Text>
 
-                      <Text style={{ flex: 1.5, textAlign: "left", fontWeight: "800", padding: 5, borderLeftWidth: 1 }}>
+                      <Text
+                        style={{
+                          flex: 1.5,
+                          textAlign: "left",
+                          fontWeight: "800",
+                          padding: 5,
+                          borderLeftWidth: 1,
+                        }}
+                      >
                         الصنف
                       </Text>
-                      <Text style={{ flex: 1, textAlign: "center", padding: 5, borderLeftWidth: 1 }}>النوع</Text>
-                      <Text style={{ flex: 1, textAlign: "center", padding: 5, borderLeftWidth: 1 }}>العدد</Text>
-                      <Text style={{ flex: 1, textAlign: "center", padding: 5, borderLeftWidth: 1 }}>السعر</Text>
-                      <Text style={{ flex: 1, textAlign: "center", paddingHorizontal: 2, paddingVertical: 3, fontSize: 13, borderLeftWidth: 1 }}>الإجمالي</Text>
+                      <Text
+                        style={{
+                          flex: 1,
+                          textAlign: "center",
+                          padding: 5,
+                          borderLeftWidth: 1,
+                        }}
+                      >
+                        النوع
+                      </Text>
+                      <Text
+                        style={{
+                          flex: 1,
+                          textAlign: "center",
+                          padding: 5,
+                          borderLeftWidth: 1,
+                        }}
+                      >
+                        العدد
+                      </Text>
+                      <Text
+                        style={{
+                          flex: 1,
+                          textAlign: "center",
+                          padding: 5,
+                          borderLeftWidth: 1,
+                        }}
+                      >
+                        السعر
+                      </Text>
+                      <Text
+                        style={{
+                          flex: 1,
+                          textAlign: "center",
+                          paddingHorizontal: 2,
+                          paddingVertical: 3,
+                          fontSize: 13,
+                          borderLeftWidth: 1,
+                        }}
+                      >
+                        الإجمالي
+                      </Text>
                     </View>
 
                     <ScrollView style={{ maxHeight: 190 }}>
                       {selectedInvoice.items.map((band, index) => (
-                        <View key={band.id} style={{ flexDirection: "row", borderBottomWidth: 1 }}>
-                          <Text style={{ flex: 1, textAlign: "center", padding: 1 }}>
+                        <View
+                          key={band.id}
+                          style={{ flexDirection: "row-reverse", borderBottomWidth: 1 }}
+                        >
+                          <Text
+                            style={{ flex: 1, textAlign: "center", padding: 1 }}
+                          >
                             {index + 1}
                           </Text>
-                          <Text style={{ flex: 1.5, textAlign: "left", fontWeight: "800", padding: 5, borderLeftWidth: 1 }}>
+                          <Text
+                            style={{
+                              flex: 1.5,
+                              textAlign: "left",
+                              fontWeight: "800",
+                              padding: 5,
+                              borderLeftWidth: 1,
+                            }}
+                          >
                             {band.name}
                           </Text>
-                          <Text style={{ flex: 1, textAlign: "center", padding: 5, borderLeftWidth: 1 }}>
+                          <Text
+                            style={{
+                              flex: 1,
+                              textAlign: "center",
+                              padding: 5,
+                              borderLeftWidth: 1,
+                            }}
+                          >
                             {band.type}
                           </Text>
-                          <Text style={{ flex: 1, textAlign: "center", padding: 5, borderLeftWidth: 1 }}>
+                          <Text
+                            style={{
+                              flex: 1,
+                              textAlign: "center",
+                              padding: 5,
+                              borderLeftWidth: 1,
+                            }}
+                          >
                             {band.qty}
                           </Text>
-                          <Text style={{ flex: 1, textAlign: "center", padding: 5, borderLeftWidth: 1 }}>
+                          <Text
+                            style={{
+                              flex: 1,
+                              textAlign: "center",
+                              padding: 5,
+                              borderLeftWidth: 1,
+                            }}
+                          >
                             {band.price}
                           </Text>
-                          <Text style={{ flex: 1, textAlign: "center", padding: 2, fontSize: 20, borderLeftWidth: 1 }}>
+                          <Text
+                            style={{
+                              flex: 1,
+                              textAlign: "center",
+                              padding: 2,
+                              fontSize: 20,
+                              borderLeftWidth: 1,
+                            }}
+                          >
                             {(band.qty * band.price).toFixed(2)}
                           </Text>
                         </View>
@@ -1665,20 +2137,26 @@ export default function ClientDetails() {
 
                     <View
                       style={{
-                        flexDirection: "row",
+                        flexDirection: "row-reverse",
                         justifyContent: "space-between",
                         marginTop: 0,
                         paddingHorizontal: 0,
                       }}
                     >
-                      <Text style={{ fontWeight: "bold", fontSize: 16 }}>الإجمالي الكلي:</Text>
                       <Text style={{ fontWeight: "bold", fontSize: 16 }}>
-                        {selectedInvoice.total}جنيه
+                        الإجمالي الكلي:
+                      </Text>
+                      <Text style={{ fontWeight: "bold", fontSize: 16 }}>
+                        {calculateTotal(selectedInvoice.items)}جنيه
                       </Text>
                     </View>
-                    {selectedInvoice.note ? (<Text style={{ fontWeight: "bold", fontSize: 16 }}>
-                      {selectedInvoice.note}
-                    </Text>) : ("")}
+                    {selectedInvoice.note ? (
+                      <Text style={{ fontWeight: "bold", fontSize: 16 }}>
+                        {selectedInvoice.note}
+                      </Text>
+                    ) : (
+                      ""
+                    )}
                     <ScrollView style={{ maxHeight: 80 }}>
                       {/* {selectedInvoice.payments?.map((item) => (
                         <View
@@ -1705,7 +2183,7 @@ export default function ClientDetails() {
                         <View
                           key={item.id}
                           style={{
-                            flexDirection: "row",
+                            flexDirection: "row-reverse",
                             justifyContent: "space-between",
                             alignItems: "center",
                             borderBottomWidth: 1,
@@ -1719,11 +2197,12 @@ export default function ClientDetails() {
                               دفعة {item.method} | {item.amount} جنيه
                             </Text>
                             <Text style={{ fontSize: 14, color: "#555" }}>
-                              بتاريخ: {new Date(item.date).toISOString().split("T")[0]}
+                              بتاريخ:{" "}
+                              {new Date(item.date).toISOString().split("T")[0]}
                             </Text>
                           </View>
 
-                          <View style={{ flexDirection: "row", gap: 5 }}>
+                          <View style={{ flexDirection: "row-reverse", gap: 5 }}>
                             <TouchableOpacity
                               style={{
                                 backgroundColor: "#34699A",
@@ -1737,70 +2216,117 @@ export default function ClientDetails() {
                                 setEditPaymentDate(item.date);
                                 setEditPaymentModalVisible(true);
                               }}
-
                             >
-                              <Text style={{ color: "white", fontWeight: "bold" }}>✏️</Text>
+                              <Text
+                                style={{ color: "white", fontWeight: "bold" }}
+                              >
+                                ✏️
+                              </Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity
                               style={{
                                 backgroundColor: "#8C1007",
-                                paddingVertical: 4,
-                                paddingHorizontal: 8,
-                                borderRadius: 6,
+                                minWidth: 44,
+                                minHeight: 44,
+                                alignItems: "center",
+                                justifyContent: "center",
+                                borderRadius: 8,
                               }}
-                              onPress={() => confirmDeletePayment(item.id)}
+                              onPress={() => {
+                                if (!clientId || !selectedInvoice) {
+                                  Alert.alert("خطأ", "تعذر تحديد الفاتورة");
+                                  return;
+                                }
+                                void deletePaymentFromInvoice(
+                                  clientId,
+                                  selectedInvoice.id,
+                                  item.id,
+                                );
+                              }}
                             >
-                              <Text style={{ color: "white", fontWeight: "bold" }}>🗑</Text>
+                              <Text
+                                style={{ color: "white", fontWeight: "bold" }}
+                              >
+                                🗑
+                              </Text>
                             </TouchableOpacity>
                           </View>
                         </View>
                       ))}
 
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 0, paddingHorizontal: 5, backgroundColor: "#a4bbd0ff" }}>
-                        <Text style={{ fontWeight: "bold", fontSize: 16 }}>المتبقي:</Text>
+                      <View
+                        style={{
+                          flexDirection: "row-reverse",
+                          justifyContent: "space-between",
+                          marginTop: 0,
+                          paddingHorizontal: 5,
+                          backgroundColor: "#a4bbd0ff",
+                        }}
+                      >
+                        <Text style={{ fontWeight: "bold", fontSize: 16 }}>
+                          المتبقي:
+                        </Text>
                         <Text style={{ fontWeight: "bold", fontSize: 16 }}>
                           {selectedInvoice.remaining} جنيه
                         </Text>
                       </View>
-
                     </ScrollView>
-
                   </View>
-
                 </View>
 
-                <View style={[styles.actions, { marginTop: 1, alignItems: "center", justifyContent: "center" }]}>
+                <View
+                  style={[
+                    styles.actions,
+                    {
+                      marginTop: 1,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    },
+                  ]}
+                >
                   <TouchableOpacity
                     style={[styles.button, { marginVertical: 5 }]}
-                    onPress={() => { setPaymentModal(true), setInvoiceId(selectedInvoice.id) }}
+                    onPress={() => {
+                      (setPaymentModal(true), setInvoiceId(selectedInvoice.id));
+                    }}
                   >
                     <Text style={styles.buttonText}>إضافة دفعه</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.button, { paddingHorizontal: 12, backgroundColor: "#34699A" }]}
+                    style={[
+                      styles.button,
+                      { paddingHorizontal: 12, backgroundColor: "#34699A" },
+                    ]}
                     onPress={() => {
                       setSelectedInvoiceItems(selectedInvoice.items);
                       setInvoiceNumber(selectedInvoice.number || "");
 
-
                       console.log("ttttttttttttttttttttttttttttt");
 
-                      console.log(parseArabicDate(selectedInvoice.date).toISOString());
+                      console.log(
+                        parseArabicDate(selectedInvoice.date).toISOString(),
+                      );
 
-                      setInvoiceDate(parseArabicDate(selectedInvoice.date).toISOString());
+                      setInvoiceDate(
+                        parseArabicDate(selectedInvoice.date).toISOString(),
+                      );
 
                       setEditSelectedInvoice(true);
                       setEditSelectedInvoiceItem(selectedInvoice);
                       setSelectedInvoice(null);
                       setActiveTab("bands");
-
                     }}
                   >
                     <Text style={styles.buttonText}>تعديل الفاتورة</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={{ backgroundColor: "#8C1007", paddingVertical: 9, paddingHorizontal: 10, borderRadius: 10 }}
+                    style={{
+                      backgroundColor: "#8C1007",
+                      paddingVertical: 9,
+                      paddingHorizontal: 10,
+                      borderRadius: 10,
+                    }}
                     onPress={() => {
                       deleteInvoice(selectedInvoice.id);
                       setSelectedInvoice(null);
@@ -1808,15 +2334,14 @@ export default function ClientDetails() {
                   >
                     <Text style={styles.actionText}>🗑 حذف</Text>
                   </TouchableOpacity>
-
-
                 </View>
 
                 <View>
-
-
                   <TouchableOpacity
-                    style={[styles.button, { paddingHorizontal: 40, backgroundColor: "#34699A" }]}
+                    style={[
+                      styles.button,
+                      { paddingHorizontal: 40, backgroundColor: "#34699A" },
+                    ]}
                     onPress={() => {
                       if (!clientId || !selectedInvoice) return;
 
@@ -1826,7 +2351,7 @@ export default function ClientDetails() {
                       }
 
                       const sortedInvoices = [...invoices].sort(
-                        (a, b) => b.createdAt - a.createdAt
+                        (a, b) => b.createdAt - a.createdAt,
                       );
                       const lastInvoice = sortedInvoices[0];
 
@@ -1835,16 +2360,17 @@ export default function ClientDetails() {
                       transferRemainingToLastInvoice(
                         clientId,
                         selectedInvoice,
-                        lastInvoice.id
+                        lastInvoice.id,
                       );
                     }}
                   >
-                    <Text style={styles.buttonText}>اضافه الاجمالي لاخر فاتورة</Text>
+                    <Text style={styles.buttonText}>
+                      اضافه الاجمالي لاخر فاتورة
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
             )}
-
           </View>
         </View>
       </Modal>
@@ -1855,9 +2381,22 @@ export default function ClientDetails() {
         animationType="slide"
         onRequestClose={() => setPaymentModal(false)}
       >
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)" }}>
-          <View style={{ backgroundColor: "white", padding: 20, borderRadius: 10, width: "80%" }}>
-
+        <View
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            alignItems: "center",
+            backgroundColor: "rgba(0,0,0,0.5)",
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: "white",
+              padding: 20,
+              borderRadius: 10,
+              width: "80%",
+            }}
+          >
             <TextInput
               placeholder="المبلغ المدفوع"
               value={paymentAmount}
@@ -1868,7 +2407,10 @@ export default function ClientDetails() {
                 if (!isNaN(num)) {
                   if (num > selectedInvoice!.remaining) {
                     setPaymentAmount(selectedInvoice!.remaining.toString());
-                    Alert.alert("تنبيه", `المبلغ لا يمكن أن يتجاوز ${selectedInvoice!.remaining} جنيه`);
+                    Alert.alert(
+                      "تنبيه",
+                      `المبلغ لا يمكن أن يتجاوز ${selectedInvoice!.remaining} جنيه`,
+                    );
                   } else {
                     setPaymentAmount(cleaned);
                   }
@@ -1897,9 +2439,12 @@ export default function ClientDetails() {
               <Picker.Item label="نقدا" value="نقدا" />
               <Picker.Item label="فودافون كاش" value="فودافون كاش" />
               <Picker.Item label="أورانج كاش" value="أورانج كاش" />
+              <Picker.Item label="اتصالات كاش" value="اتصالات كاش" />
               <Picker.Item label="خصم" value="خصم" />
             </Picker>
-            <Text style={{ fontWeight: "bold" }}>أضغط علي التاريخ لاختيار تاريخ الدفع:</Text>
+            <Text style={{ fontWeight: "bold" }}>
+              أضغط علي التاريخ لاختيار تاريخ الدفع:
+            </Text>
 
             <TouchableOpacity onPress={() => setShowDatePicker(true)}>
               {/* <Text style={{ marginVertical: 10 }}>
@@ -1910,7 +2455,6 @@ export default function ClientDetails() {
                   ? new Date(paymentDate).toLocaleDateString("ar-EG")
                   : "اختر تاريخ الدفع"}
               </Text>
-
             </TouchableOpacity>
 
             {/* {showDatePicker && (
@@ -1921,16 +2465,22 @@ export default function ClientDetails() {
                 onChange={onChangeDate}
               />
             )} */}
-            {showDatePicker && (<DateTimePicker
-              value={new Date(paymentDate)}
-              mode="date"
-              display="default"
+            {showDatePicker && (
+              <DateTimePicker
+                value={new Date(paymentDate)}
+                mode="date"
+                display="default"
+                onChange={onChangeDate}
+              />
+            )}
 
-              onChange={onChangeDate}
-            />)}
-
-
-            <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 20 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginTop: 20,
+              }}
+            >
               <TouchableOpacity
                 style={[styles.button, { flex: 1, marginRight: 5 }]}
                 onPress={() => {
@@ -1942,7 +2492,12 @@ export default function ClientDetails() {
                   }
 
                   if (clientId && invoiceId) {
-                    addPaymentToInvoice(clientId, invoiceId, paymentMethod, amountNumber);
+                    addPaymentToInvoice(
+                      clientId,
+                      invoiceId,
+                      paymentMethod,
+                      amountNumber,
+                    );
                   }
 
                   setPaymentModal(false);
@@ -1952,9 +2507,11 @@ export default function ClientDetails() {
                 <Text style={styles.buttonText}>حفظ</Text>
               </TouchableOpacity>
 
-
               <TouchableOpacity
-                style={[styles.button, { flex: 1, marginLeft: 5, backgroundColor: "red" }]}
+                style={[
+                  styles.button,
+                  { flex: 1, marginLeft: 5, backgroundColor: "red" },
+                ]}
                 onPress={() => setPaymentModal(false)}
               >
                 <Text style={styles.buttonText}>إلغاء</Text>
@@ -1997,12 +2554,18 @@ export default function ClientDetails() {
             />
             <TouchableOpacity
               disabled={!invoiceNumber?.trim()}
-              style={[styles.button, { margin: 0, backgroundColor: !invoiceNumber?.trim() ? "gray" : "#34699A", }]}
+              style={[
+                styles.button,
+                {
+                  margin: 0,
+                  backgroundColor: !invoiceNumber?.trim() ? "gray" : "#34699A",
+                },
+              ]}
               onPress={() => {
                 if (!clientId || !selectedInvoice) return;
 
                 const sortedInvoices = [...invoices].sort(
-                  (a, b) => b.createdAt - a.createdAt
+                  (a, b) => b.createdAt - a.createdAt,
                 );
                 const lastInvoice = sortedInvoices[0];
 
@@ -2011,14 +2574,16 @@ export default function ClientDetails() {
                 transferRemainingToLastInvoice(
                   clientId,
                   selectedInvoice,
-                  lastInvoice.id
+                  lastInvoice.id,
                 );
-              }}            >
+              }}
+            >
               <Text style={styles.buttonText}>تأكيد الترحيل</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.button, { marginTop: 10 }]}
-              onPress={() => setVisible(false)}            >
+              onPress={() => setVisible(false)}
+            >
               <Text style={styles.buttonText}>الغاء</Text>
             </TouchableOpacity>
             {/* <Button title="تأكيد الترحيل"
@@ -2282,7 +2847,14 @@ export default function ClientDetails() {
               width: "80%",
             }}
           >
-            <Text style={{ fontWeight: "bold", fontSize: 18, textAlign: "center", marginBottom: 10 }}>
+            <Text
+              style={{
+                fontWeight: "bold",
+                fontSize: 18,
+                textAlign: "center",
+                marginBottom: 10,
+              }}
+            >
               تعديل الدفعة
             </Text>
 
@@ -2295,15 +2867,23 @@ export default function ClientDetails() {
                 const num = Number(cleaned);
 
                 if (!isNaN(num)) {
-                  if (num > selectedInvoice!.remaining + Number(editPayment?.amount || 0)) {
+                  if (
+                    num >
+                    selectedInvoice!.remaining +
+                    Number(editPayment?.amount || 0)
+                  ) {
                     // نسمح للمستخدم يعدل حتى إجمالي المتبقي + المبلغ الأصلي
                     Alert.alert(
                       "تنبيه",
-                      `المبلغ لا يمكن أن يتجاوز ${selectedInvoice!.remaining + Number(editPayment?.amount || 0)
-                      } جنيه`
+                      `المبلغ لا يمكن أن يتجاوز ${selectedInvoice!.remaining +
+                      Number(editPayment?.amount || 0)
+                      } جنيه`,
                     );
                     setEditPaymentAmount(
-                      (selectedInvoice!.remaining + Number(editPayment?.amount || 0)).toString()
+                      (
+                        selectedInvoice!.remaining +
+                        Number(editPayment?.amount || 0)
+                      ).toString(),
                     );
                   } else {
                     setEditPaymentAmount(cleaned);
@@ -2322,22 +2902,27 @@ export default function ClientDetails() {
               }}
             />
 
-
             {/* طريقة الدفع */}
             <Text style={{ fontWeight: "bold" }}>اختر طريقة الدفع:</Text>
             <Picker
               selectedValue={editPaymentMethod}
-              onValueChange={(value) => setEditPaymentMethod(value as PaymentMethod)}
+              onValueChange={(value) =>
+                setEditPaymentMethod(value as PaymentMethod)
+              }
             >
               <Picker.Item label="بريد" value="بريد" />
               <Picker.Item label="بنك" value="بنك" />
               <Picker.Item label="نقدا" value="نقدا" />
               <Picker.Item label="فودافون كاش" value="فودافون كاش" />
               <Picker.Item label="أورانج كاش" value="أورانج كاش" />
+              <Picker.Item label="اتصالات كاش" value="اتصالات كاش" />
+              <Picker.Item label="خصم" value="خصم" />
             </Picker>
 
             {/* اختيار التاريخ */}
-            <Text style={{ fontWeight: "bold" }}>أضغط علي التاريخ لاختيار تاريخ الدفع:</Text>
+            <Text style={{ fontWeight: "bold" }}>
+              أضغط علي التاريخ لاختيار تاريخ الدفع:
+            </Text>
             <TouchableOpacity onPress={() => setShowEditDatePicker(true)}>
               <Text style={{ marginVertical: 10 }}>
                 {editPaymentDate
@@ -2359,7 +2944,13 @@ export default function ClientDetails() {
             )}
 
             {/* الأزرار */}
-            <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 20 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginTop: 20,
+              }}
+            >
               <TouchableOpacity
                 style={[styles.button, { flex: 1, marginRight: 5 }]}
                 onPress={async () => {
@@ -2375,7 +2966,7 @@ export default function ClientDetails() {
                     clientId!,
                     selectedInvoice.id,
                     editPayment.id,
-                    updatedFields
+                    updatedFields,
                   );
 
                   setEditPaymentModalVisible(false);
@@ -2385,7 +2976,10 @@ export default function ClientDetails() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.button, { flex: 1, marginLeft: 5, backgroundColor: "red" }]}
+                style={[
+                  styles.button,
+                  { flex: 1, marginLeft: 5, backgroundColor: "red" },
+                ]}
                 onPress={() => setEditPaymentModalVisible(false)}
               >
                 <Text style={styles.buttonText}>إلغاء</Text>
@@ -2394,7 +2988,6 @@ export default function ClientDetails() {
           </View>
         </View>
       </Modal>
-
-    </View >
+    </View>
   );
 }

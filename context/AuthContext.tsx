@@ -1,15 +1,15 @@
 import * as SecureStore from "expo-secure-store";
 import {
   createUserWithEmailAndPassword,
-  getAuth,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
   User,
   UserCredential,
-} from "firebase/auth";
+} from "@firebase/auth";
+import { Platform } from "react-native";
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
-import { app } from "../app/firebase/firebase";
+import { auth } from "../app/firebase/firebase";
 
 interface AuthContextType {
   user: User | null;
@@ -22,11 +22,13 @@ interface AuthContextType {
 export const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const auth = getAuth(app);
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true); 
+  const [loading, setLoading] = useState(true);
+  const supportsSecureStore = Platform.OS !== "web";
 
   useEffect(() => {
+    if (!supportsSecureStore) return;
+
     (async () => {
       const storedUser = await SecureStore.getItemAsync("user");
       if (storedUser) {
@@ -34,21 +36,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       setLoading(false);
     })();
-  }, []);
+  }, [supportsSecureStore]);
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
-        await SecureStore.setItemAsync("user", JSON.stringify(currentUser));
+        if (supportsSecureStore) {
+          await SecureStore.setItemAsync("user", JSON.stringify(currentUser));
+        }
       } else {
         setUser(null);
-        await SecureStore.deleteItemAsync("user");
+        if (supportsSecureStore) {
+          await SecureStore.deleteItemAsync("user");
+        }
       }
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [supportsSecureStore]);
 
  
   const register = async (email: string, password: string) => {
@@ -61,7 +67,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const currentUser = userCredential.user;
       if (currentUser) {
         const token = await currentUser.getIdToken(); 
-        await SecureStore.setItemAsync("userToken", token); 
+        if (supportsSecureStore) {
+          await SecureStore.setItemAsync("userToken", token);
+        }
       }
 
     } catch (error: any) {
@@ -72,7 +80,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 
   const logout = async () => {
-    await signOut(auth); await SecureStore.deleteItemAsync("user");
+    await signOut(auth);
+    if (supportsSecureStore) {
+      await SecureStore.deleteItemAsync("user");
+    }
 
     setUser(null); 
   };

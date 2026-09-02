@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { AuthContext } from "../context/AuthContext";
-import { styles } from "../css/styles";
+import { styles } from "../style/styles";
 
 export default function SignUp() {
   const [email, setEmail] = useState("");
