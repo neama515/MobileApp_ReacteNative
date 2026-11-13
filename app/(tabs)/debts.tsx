@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { collection, getDocs, query, where } from "firebase/firestore";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -27,12 +27,15 @@ type CountryGroup = {
   total: number;
 };
 
+let savedDebtsScrollOffset = 0;
+
 export default function Debts() {
   const { user } = useAuth();
   const router = useRouter();
   const [groups, setGroups] = useState<CountryGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const listRef = useRef<FlatList<CountryGroup>>(null);
 
   const loadDebts = useCallback(async () => {
     if (!user) return;
@@ -64,11 +67,6 @@ export default function Debts() {
     }
   }, [user]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadDebts();
-    }, [loadDebts]),
-  );
 
   const filteredGroups = useMemo(() => {
     const searchText = search.trim().toLocaleLowerCase("ar");
@@ -94,6 +92,24 @@ export default function Debts() {
 
   const totalDebt = filteredGroups.reduce((sum, group) => sum + group.total, 0);
 
+  const pendingRestoreOffset = useRef<number | null>(null);
+
+  // useFocusEffect(
+  //   useCallback(() => {
+  //     loadDebts();
+  //     if (savedDebtsScrollOffset > 0) {
+  //       pendingRestoreOffset.current = savedDebtsScrollOffset;
+  //     }
+  //   }, [loadDebts]),
+  // );
+  useFocusEffect(
+    useCallback(() => {
+      loadDebts();
+      if (savedDebtsScrollOffset > 0) {
+        pendingRestoreOffset.current = savedDebtsScrollOffset;
+      }
+    }, [loadDebts]),
+  );
   return (
     <View style={[styles.container, { paddingHorizontal: 10, paddingTop: 16 }]}>
       <Text style={styles.title}>المديونيات</Text>
@@ -111,8 +127,22 @@ export default function Debts() {
 
       {loading ? <ActivityIndicator size="large" color="#34699A" /> : (
         <FlatList
+          ref={listRef}
           data={filteredGroups}
           keyExtractor={(item) => item.country}
+          onScroll={(event) => {
+            savedDebtsScrollOffset = event.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
+          onContentSizeChange={() => {
+            if (pendingRestoreOffset.current != null) {
+              const offset = pendingRestoreOffset.current;
+              pendingRestoreOffset.current = null;
+              requestAnimationFrame(() => {
+                listRef.current?.scrollToOffset({ offset, animated: false });
+              });
+            }
+          }}
           ListEmptyComponent={
             <Text style={styles.emptyText}>
               {search ? "لا توجد نتائج مطابقة" : "لا توجد مديونيات حالياً"}
@@ -129,7 +159,7 @@ export default function Debts() {
                 <TouchableOpacity
                   key={debtor.id}
                   style={[styles.clientBox, { backgroundColor: "#FFF7CC", marginTop: 7 }]}
-                  onPress={() => router.push(`/screens/ClientDetails?id=${encodeURIComponent(debtor.id)}&name=${encodeURIComponent(debtor.name)}&country=${encodeURIComponent(debtor.country)}`)}
+                  onPress={() => router.push(`/screens/ClientDetails?id=${encodeURIComponent(debtor.id)}&name=${encodeURIComponent(debtor.name)}&country=${encodeURIComponent(debtor.country)}&from=debts`)}
                 >
                   <Text style={[styles.clientName, { textAlign: "right" }]}>{debtor.name}</Text>
                   <Text style={{ color: "#8C1007", fontWeight: "bold", textAlign: "right", marginTop: 4 }}>

@@ -11,7 +11,9 @@ import {
   doc,
   getDoc,
   getDocs,
+  query,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -46,6 +48,13 @@ type PaymentMethod =
   | "اتصالات كاش"
   | "خصم";
 
+type InvoiceReturn = {
+  id: string;
+  amount: number;
+  reason: string;
+  date: string;
+};
+
 type Invoice = {
   id: string;
   date: string;
@@ -61,6 +70,7 @@ type Invoice = {
   remaining: number;
   note?: string;
   number?: string;
+  returns?: InvoiceReturn[];
 };
 
 export default function ClientDetails() {
@@ -74,11 +84,17 @@ export default function ClientDetails() {
     id?: string;
     name?: string;
     returnSearch?: string;
+    from?: string;
+
   }>();
   const clientId = params.id as string;
   const goBackToClients = () => {
     if (router.canGoBack()) {
       router.back();
+      return;
+    }
+    if (params.from === "debts") {
+      router.replace("/(tabs)/debts");
       return;
     }
     const returnSearch = params.returnSearch || "";
@@ -94,6 +110,9 @@ export default function ClientDetails() {
   const [newBandName, setNewBandName] = useState("");
   const [newBandPrice, setNewBandPrice] = useState("");
   const [newBandType, setNewBandType] = useState<Band["type"]>();
+  const [catalogBands, setCatalogBands] = useState<Band[]>([]);
+  const [catalogVisible, setCatalogVisible] = useState(false);
+  const [catalogSearch, setCatalogSearch] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [qtyInputs, setQtyInputs] = useState<{ [key: string]: string }>({});
 
@@ -114,6 +133,9 @@ export default function ClientDetails() {
   const [editSelectedInvoiceItem, setEditSelectedInvoiceItem] =
     useState<Invoice | null>(null);
   const [paymentAmount, setPaymentAmount] = useState("");
+  const [returnModalVisible, setReturnModalVisible] = useState(false);
+  const [returnAmount, setReturnAmount] = useState("");
+  const [returnReason, setReturnReason] = useState("");
 
   const invoiceRef = useRef<View>(null);
   const invoiceCaptureRef = useRef<View>(null);
@@ -177,6 +199,39 @@ export default function ClientDetails() {
     fetchBands();
   }, [clientId, user]);
 
+  // Load this user's existing items so they can be reused across clients.
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchCatalog = async () => {
+      try {
+        const clientsSnapshot = await getDocs(
+          query(collection(db, "clients"), where("userId", "==", user.uid)),
+        );
+        const itemSnapshots = await Promise.all(
+          clientsSnapshot.docs.map((client) =>
+            getDocs(collection(db, "clients", client.id, "items")),
+          ),
+        );
+        const uniqueBands = new Map<string, Band>();
+        itemSnapshots.forEach((snapshot) => {
+          snapshot.docs.forEach((itemDoc) => {
+            const data = itemDoc.data() as Omit<Band, "id">;
+            const key = data.name.trim().toLocaleLowerCase();
+            if (key && !uniqueBands.has(key)) {
+              uniqueBands.set(key, { id: itemDoc.id, ...data });
+            }
+          });
+        });
+        setCatalogBands(Array.from(uniqueBands.values()));
+      } catch (err) {
+        console.error("Error fetching item catalog:", err);
+      }
+    };
+
+    fetchCatalog();
+  }, [user]);
+
   // Function to change arabic numbers to english (in price of band)
   function arabicToEnglishNumbers(str: string) {
     return str.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
@@ -225,6 +280,24 @@ export default function ClientDetails() {
     setNewBandName("");
     setNewBandPrice("");
     setNewBandType(undefined);
+    setCatalogBands((previous) => {
+      const key = newBand.name.trim().toLocaleLowerCase();
+      const existingIndex = previous.findIndex(
+        (band) => band.name.trim().toLocaleLowerCase() === key,
+      );
+      if (existingIndex < 0) return [...previous, { id: docRef.id, ...newBand }];
+      const updated = [...previous];
+      updated[existingIndex] = { ...updated[existingIndex], ...newBand };
+      return updated;
+    });
+  };
+
+  const selectCatalogBand = (band: Band) => {
+    setNewBandName(band.name);
+    setNewBandPrice(String(band.price));
+    setNewBandType(band.type);
+    setCatalogSearch("");
+    setCatalogVisible(false);
   };
 
   // edit band
@@ -262,6 +335,22 @@ export default function ClientDetails() {
   // calc total of payments of an invoice
   const getPaidAmount = (invoice: Invoice) =>
     (invoice.payments || []).reduce((sum, p) => sum + p.amount, 0);
+
+  const getReturnedAmount = (invoice: Pick<Invoice, "returns">) =>
+    (invoice.returns || []).reduce(
+      (sum, item) => sum + Number(item.amount || 0),
+      0,
+    );
+
+  // العميل قد يكون لديه أكثر من فاتورة؛ المديونية هي مجموع المتبقي في الكل.
+  const syncClientRemainingAmount = async (id: string) => {
+    const snapshot = await getDocs(collection(db, "clients", id, "invoices"));
+    const remainingAmount = snapshot.docs.reduce(
+      (sum, invoice) => sum + Math.max(0, Number(invoice.data().remaining || 0)),
+      0,
+    );
+    await updateDoc(doc(db, "clients", id), { remainingAmount });
+  };
 
   // الفاتورة المُرحّل إليها مبلغ قديم كانت تحفظ المتبقي فقط. نستخدم الإجمالي
   // الفعلي للحساب فقط، لكن لا نغيّر total حتى يظل إجمالي الأصناف وحدها.
@@ -318,9 +407,7 @@ export default function ClientDetails() {
         collection(db, "clients", clientId, "invoices"),
         newInvoice,
       );
-      await updateDoc(doc(db, "clients", clientId), {
-        remainingAmount: newInvoice.remaining,
-      });
+      await syncClientRemainingAmount(clientId);
 
       setInvoices((prev) => [{ id: docRef.id, ...newInvoice }, ...prev]);
 
@@ -345,28 +432,8 @@ export default function ClientDetails() {
   // delete invoice
   const deleteInvoice = async (id: string) => {
     if (!clientId) return;
-    const deletedInvoice = invoices.find((invoice) => invoice.id === id);
-    const isLatestInvoice = deletedInvoice
-      ? invoices.every(
-        (invoice) =>
-          invoice.id === id ||
-          Number(invoice.createdAt || 0) <= Number(deletedInvoice.createdAt || 0),
-      )
-      : false;
-
     await deleteDoc(doc(db, "clients", clientId, "invoices", id));
-
-    const remainingInvoices = await getDocs(
-      collection(db, "clients", clientId, "invoices"),
-    );
-    const remainingAmount =
-      isLatestInvoice || remainingInvoices.empty
-        ? 0
-        : remainingInvoices.docs.reduce(
-          (sum, invoice) => sum + Number(invoice.data().remaining || 0),
-          0,
-        );
-    await updateDoc(doc(db, "clients", clientId), { remainingAmount });
+    await syncClientRemainingAmount(clientId);
 
     setInvoices((prev) => prev.filter((inv) => inv.id !== id));
   };
@@ -375,8 +442,32 @@ export default function ClientDetails() {
   const generatePDF = async (invoice: Invoice) => {
     const total = invoice.items.reduce((sum, i) => sum + i.price * i.qty, 0);
     const paid = (invoice.payments || []).reduce((sum, p) => sum + p.amount, 0);
-    const remaining = total - paid;
-
+    const returned = getReturnedAmount(invoice);
+    const remaining = invoice.remaining;
+    const returnsHTML =
+      invoice.returns && invoice.returns.length > 0
+        ? `
+      <h2 style="margin-top:15px; text-align:center;">المرتجعات</h2>
+      <table>
+        <thead>
+          <tr><th>المبلغ</th><th>السبب</th><th>التاريخ</th></tr>
+        </thead>
+        <tbody>
+          ${invoice.returns
+          .map(
+            (r) => `
+            <tr>
+              <td>${r.amount}</td>
+              <td style="text-align:right;">${r.reason}</td>
+              <td>${new Date(r.date).toISOString().split("T")[0]}</td>
+            </tr>
+          `,
+          )
+          .join("")}
+        </tbody>
+      </table>
+    `
+        : "";
     const paymentsHTML =
       invoice.payments && invoice.payments.length > 0
         ? `
@@ -489,6 +580,8 @@ export default function ClientDetails() {
       <div style="margin-top:20px; border:1px solid black; padding:10px;">
         <p><strong>الإجمالي الكلي:</strong> ${total.toFixed(2)} جنيه</p>
         <p><strong>إجمالي المدفوع:</strong> ${paid.toFixed(2)} جنيه</p>
+          <p><strong>إجمالي المرتجعات:</strong> ${returned.toFixed(2)} جنيه</p>
+
         <p><strong>المتبقي:</strong> ${remaining.toFixed(2)} جنيه</p>
       </div>
     </body>
@@ -644,9 +737,7 @@ export default function ClientDetails() {
         payments: updatedPayments,
         remaining: updatedRemaining,
       });
-      await updateDoc(doc(db, "clients", clientId), {
-        remainingAmount: updatedRemaining,
-      });
+      await syncClientRemainingAmount(clientId);
 
       // لو بتعرضي الداتا محلياً، حوّلي Timestamp إلى Date للـ UI
       setInvoices((prev) =>
@@ -676,6 +767,62 @@ export default function ClientDetails() {
       Alert.alert("خطأ", "تعذر إضافة الدفعة");
     }
   };
+  const addReturnToInvoice = async () => {
+    if (!clientId || !selectedInvoice) return;
+
+    const amount = Number(returnAmount);
+    const reason = returnReason.trim();
+    if (!Number.isFinite(amount) || amount <= 0) {
+      Alert.alert("خطأ", "أدخل مبلغ مرتجع صحيح");
+      return;
+    }
+    if (!reason) {
+      Alert.alert("خطأ", "أدخل سبب المرتجع");
+      return;
+    }
+
+    try {
+      const invoiceRef = doc(db, "clients", clientId, "invoices", selectedInvoice.id);
+      const snapshot = await getDoc(invoiceRef);
+      if (!snapshot.exists()) {
+        Alert.alert("خطأ", "الفاتورة غير موجودة");
+        return;
+      }
+
+      const data = snapshot.data();
+      const currentRemaining = Math.max(0, Number(data.remaining || 0));
+      if (amount > currentRemaining) {
+        Alert.alert("خطأ", `المرتجع لا يمكن أن يتجاوز المتبقي (${currentRemaining} جنيه)`);
+        return;
+      }
+
+      const newReturn: InvoiceReturn = {
+        id: Date.now().toString(),
+        amount,
+        reason,
+        date: new Date().toISOString(),
+      };
+      const returns = [...(data.returns || []), newReturn];
+      const remaining = currentRemaining - amount;
+
+      await updateDoc(invoiceRef, { returns, remaining });
+      await syncClientRemainingAmount(clientId);
+
+      const updatedInvoice = { ...selectedInvoice, returns, remaining };
+      setInvoices((prev) =>
+        prev.map((invoice) => invoice.id === selectedInvoice.id ? updatedInvoice : invoice),
+      );
+      setSelectedInvoice(updatedInvoice);
+      setReturnAmount("");
+      setReturnReason("");
+      setReturnModalVisible(false);
+      Alert.alert("تم", "تم تسجيل المرتجع وتحديث المديونية");
+    } catch (error) {
+      console.error("Error adding invoice return", error);
+      Alert.alert("خطأ", "تعذر تسجيل المرتجع");
+    }
+  };
+
   // edit invoice
   const saveInvoiceChanges = async () => {
     if (!clientId || !editSelectedInvoiceItem) return;
@@ -692,10 +839,7 @@ export default function ClientDetails() {
 
     const updatedRemaining = oldRemaining + diff;
 
-    const payments = editSelectedInvoiceItem.payments || [];
-    const paid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-
-    const remaining = Math.max(updatedRemaining, newTotal - paid);
+    const remaining = Math.max(0, updatedRemaining);
 
     const updatedInvoice = {
       ...editSelectedInvoiceItem,
@@ -710,9 +854,7 @@ export default function ClientDetails() {
       doc(db, "clients", clientId, "invoices", editSelectedInvoiceItem.id),
       updatedInvoice,
     );
-    await updateDoc(doc(db, "clients", clientId), {
-      remainingAmount: updatedInvoice.remaining,
-    });
+    await syncClientRemainingAmount(clientId);
 
     setInvoices((prev) =>
       prev.map((inv) =>
@@ -779,9 +921,7 @@ export default function ClientDetails() {
         remaining: 0,
       });
 
-      await updateDoc(doc(db, "clients", clientId), {
-        remainingAmount: updatedLastRemaining,
-      });
+      await syncClientRemainingAmount(clientId);
 
       setInvoices((prev) =>
         prev.map((inv) => {
@@ -853,7 +993,7 @@ export default function ClientDetails() {
 
       // تحديث ملخص العميل لا يجب أن يمنع حذف الدفعة إذا تعذّر مؤقتًا.
       try {
-        await updateDoc(doc(db, "clients", clientId), { remainingAmount: remaining });
+        await syncClientRemainingAmount(clientId);
       } catch (clientUpdateError) {
         console.warn("Could not update client remaining amount", clientUpdateError);
       }
@@ -914,15 +1054,14 @@ export default function ClientDetails() {
         (sum: number, p: any) => sum + Number(p.amount || 0),
         0,
       );
-      const remaining = total - paid;
+      const returned = getReturnedAmount(data); // data.returns من Firestore
+      const remaining = Math.max(0, total - paid - returned);
 
       await updateDoc(invoiceRef, {
         payments: updatedPayments,
         remaining,
       });
-      await updateDoc(doc(db, "clients", clientId), {
-        remainingAmount: remaining,
-      });
+      await syncClientRemainingAmount(clientId);
 
       setInvoices((prev) =>
         prev.map((inv) =>
@@ -977,7 +1116,7 @@ export default function ClientDetails() {
   console.log("====================================");
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { justifyContent: "flex-start" }]}>
       {selectedInvoice && (
         <View
           ref={invoiceCaptureRef}
@@ -1194,7 +1333,39 @@ export default function ClientDetails() {
                 </Text>
               </View>
             ))}
-
+            {selectedInvoice.returns && selectedInvoice.returns.length > 0 && (
+              <>
+                <View style={{ flexDirection: "row-reverse" }}>
+                  <Text style={{ fontWeight: "bold", fontSize: 16 }}>المرتجعات:</Text>
+                </View>
+                {selectedInvoice.returns.map((ret) => (
+                  <View
+                    key={ret.id}
+                    style={{
+                      flexDirection: "row-reverse",
+                      justifyContent: "space-between",
+                      paddingVertical: 5,
+                      paddingHorizontal: 10,
+                      backgroundColor: "#FFE5E5",
+                      borderBottomWidth: 1,
+                      borderColor: "#ccc",
+                    }}
+                  >
+                    <View>
+                      <Text style={{ fontWeight: "bold", fontSize: 16 }}>{ret.amount} جنيه</Text>
+                      <Text style={{ fontSize: 14, color: "#555" }}>السبب: {ret.reason}</Text>
+                    </View>
+                    <Text style={{ fontSize: 12, color: "#888" }}>
+                      بتاريخ: {new Date(ret.date).toISOString().split("T")[0]}
+                    </Text>
+                  </View>
+                ))}
+                <View style={{ flexDirection: "row-reverse", justifyContent: "space-between", paddingHorizontal: 5 }}>
+                  <Text style={{ fontWeight: "bold", fontSize: 16 }}>إجمالي المرتجعات:</Text>
+                  <Text style={{ fontWeight: "bold", fontSize: 16 }}>{getReturnedAmount(selectedInvoice)} جنيه</Text>
+                </View>
+              </>
+            )}
             <View
               style={{
                 flexDirection: "row",
@@ -1213,7 +1384,7 @@ export default function ClientDetails() {
         </View>
       )}
 
-      <View>
+      {activeTab === "invoices" && <View>
         <TouchableOpacity
           style={[
             styles.button,
@@ -1251,63 +1422,127 @@ export default function ClientDetails() {
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
-      {/* Tab Bands */}
-      {activeTab === "bands" && (
-        <View>
-          <TextInput
-            placeholder="اسم الصنف"
-            placeholderTextColor={"#000"}
-            value={newBandName}
-            onChangeText={setNewBandName}
-            style={styles.input}
-          />
-          <TextInput
-            placeholder="السعر لكل وحدة"
-            placeholderTextColor={"#000"}
-            value={newBandPrice}
-            onChangeText={setNewBandPrice}
-            keyboardType="numeric"
-            style={styles.input}
-          />
-
-          <View style={{ flexDirection: "row", gap: 10, marginBottom: 7 }}>
-            {(["عدد", "كيلو"] as const).map((t) => (
-              <TouchableOpacity
-                key={t}
-                onPress={() => setNewBandType(t)}
-                style={[
-                  styles.typeBtn,
-                  { paddingHorizontal: 20 },
-                  newBandType === t && { backgroundColor: "#34699A" },
-                ]}
-              >
-                <Text style={{ color: newBandType === t ? "white" : "black" }}>
-                  {t}
-                </Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={[styles.button, { paddingHorizontal: 22 }]}
-              onPress={addBand}
-            >
-              <Text style={styles.buttonText}>إضافة صنف</Text>
+      </View>}
+      <Modal visible={catalogVisible} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: "#0008", justifyContent: "center", padding: 20 }}>
+          <View style={{ backgroundColor: "white", borderRadius: 12, padding: 16, maxHeight: "80%" }}>
+            <Text style={{ color: "#000", fontSize: 18, fontWeight: "700", textAlign: "right", marginBottom: 12 }}>
+              اختاري بندًا من الكتالوج
+            </Text>
+            <TextInput
+              placeholder="ابحثي عن بند..."
+              placeholderTextColor="#666"
+              value={catalogSearch}
+              onChangeText={setCatalogSearch}
+              style={[styles.input, { marginVertical: 0, marginBottom: 10 }]}
+            />
+            <FlatList
+              data={catalogBands.filter((band) =>
+                band.name.toLocaleLowerCase().includes(catalogSearch.trim().toLocaleLowerCase()),
+              )}
+              keyExtractor={(item, index) => `${item.id}-${index}`}
+              ListEmptyComponent={<Text style={{ color: "#555", textAlign: "center", padding: 20 }}>{catalogBands.length ? "مفيش نتائج مطابقة" : "مفيش بنود محفوظة لسه"}</Text>}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  onPress={() => selectCatalogBand(item)}
+                  style={{ paddingVertical: 12, borderBottomWidth: 1, borderColor: "#ddd", flexDirection: "row-reverse", justifyContent: "space-between" }}
+                >
+                  <Text style={{ color: "#000" }}>{item.name}</Text>
+                  <Text style={{ color: "#34699A" }}>{item.price} جنيه</Text>
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity onPress={() => { setCatalogVisible(false); setCatalogSearch(""); }} style={{ padding: 12, alignItems: "center" }}>
+              <Text style={{ color: "#34699A", fontWeight: "700" }}>إغلاق</Text>
             </TouchableOpacity>
           </View>
-
-          <TextInput
-            placeholder="ابحث عن بند..."
-            placeholderTextColor={"#000"}
-            value={searchTerm}
-            onChangeText={setSearchTerm}
-            style={[styles.input, { marginVertical: 0 }]}
-          />
         </View>
-      )}
+      </Modal>
 
       {activeTab === "bands" && (
-        <View style={{ flex: 1 }}>
+        <ScrollView
+          style={{ flex: 1 }}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}
+        >
           <FlatList
+            scrollEnabled={false}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
+            ListHeaderComponent={
+              <View>
+                <TouchableOpacity
+                  style={[
+                    styles.button,
+                    { flexDirection: "row", paddingVertical: 10, marginBottom: 0 },
+                  ]}
+                  onPress={goBackToClients}
+                >
+                  <Ionicons name="arrow-forward" size={30} color="white" style={{ marginRight: 8 }} />
+                  <Text style={styles.buttonText}>الرجوع</Text>
+                </TouchableOpacity>
+                <View style={{ flexDirection: "row", justifyContent: "center", marginVertical: 5, gap: 20 }}>
+                  <TouchableOpacity onPress={() => setActiveTab("bands")}>
+                    <Text style={activeTab === "bands" ? styles.activeTab : styles.tab}>الأصناف</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setActiveTab("invoices")}>
+                    <Text style={activeTab === "invoices" ? styles.activeTab : styles.tab}>الفواتير</Text>
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setCatalogVisible(true)}
+                  style={[styles.input, { justifyContent: "center", minHeight: 48 }]}
+                >
+                  <Text style={{ color: "#000", textAlign: "right" }}>
+                    اختاري بندًا من الكتالوج ({catalogBands.length})
+                  </Text>
+                </TouchableOpacity>
+                <TextInput
+                  placeholder="اسم الصنف"
+                  placeholderTextColor="#000"
+                  value={newBandName}
+                  onChangeText={setNewBandName}
+                  style={styles.input}
+                />
+                <TextInput
+                  placeholder="السعر لكل وحدة"
+                  placeholderTextColor="#000"
+                  value={newBandPrice}
+                  onChangeText={setNewBandPrice}
+                  keyboardType="numeric"
+                  style={styles.input}
+                />
+                <View style={{ flexDirection: "row", gap: 10, marginBottom: 7 }}>
+                  {(["عدد", "كيلو"] as const).map((t) => (
+                    <TouchableOpacity
+                      key={t}
+                      onPress={() => setNewBandType(t)}
+                      style={[
+                        styles.typeBtn,
+                        { paddingHorizontal: 20 },
+                        newBandType === t && { backgroundColor: "#34699A" },
+                      ]}
+                    >
+                      <Text style={{ color: newBandType === t ? "white" : "black" }}>{t}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={[styles.button, { paddingHorizontal: 22 }]}
+                    onPress={addBand}
+                  >
+                    <Text style={styles.buttonText}>إضافة صنف</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  placeholder="ابحث عن بند..."
+                  placeholderTextColor="#000"
+                  value={searchTerm}
+                  onChangeText={setSearchTerm}
+                  style={[styles.input, { marginVertical: 0 }]}
+                />
+              </View>
+            }
             data={bands.filter((b) =>
               b.name.toLowerCase().includes(searchTerm.toLowerCase()),
             )}
@@ -1472,7 +1707,7 @@ export default function ClientDetails() {
               );
             }}
           />
-        </View>
+        </ScrollView>
       )}
 
       {/* Tab Invoices */}
@@ -2254,7 +2489,39 @@ export default function ClientDetails() {
                           </View>
                         </View>
                       ))}
-
+                      {selectedInvoice.returns && selectedInvoice.returns.length > 0 && (
+                        <>
+                          <View style={{ flexDirection: "row-reverse" }}>
+                            <Text style={{ fontWeight: "bold", fontSize: 16 }}>المرتجعات:</Text>
+                          </View>
+                          {selectedInvoice.returns.map((ret) => (
+                            <View
+                              key={ret.id}
+                              style={{
+                                flexDirection: "row-reverse",
+                                justifyContent: "space-between",
+                                paddingVertical: 5,
+                                paddingHorizontal: 10,
+                                backgroundColor: "#FFE5E5",
+                                borderBottomWidth: 1,
+                                borderColor: "#ccc",
+                              }}
+                            >
+                              <View>
+                                <Text style={{ fontWeight: "bold", fontSize: 16 }}>{ret.amount} جنيه</Text>
+                                <Text style={{ fontSize: 14, color: "#555" }}>السبب: {ret.reason}</Text>
+                              </View>
+                              <Text style={{ fontSize: 12, color: "#888" }}>
+                                بتاريخ: {new Date(ret.date).toISOString().split("T")[0]}
+                              </Text>
+                            </View>
+                          ))}
+                          <View style={{ flexDirection: "row-reverse", justifyContent: "space-between", paddingHorizontal: 5 }}>
+                            <Text style={{ fontWeight: "bold", fontSize: 16 }}>إجمالي المرتجعات:</Text>
+                            <Text style={{ fontWeight: "bold", fontSize: 16 }}>{getReturnedAmount(selectedInvoice)} جنيه</Text>
+                          </View>
+                        </>
+                      )}
                       <View
                         style={{
                           flexDirection: "row-reverse",
@@ -2292,6 +2559,12 @@ export default function ClientDetails() {
                     }}
                   >
                     <Text style={styles.buttonText}>إضافة دفعه</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.button, { marginVertical: 5, backgroundColor: "#8C1007" }]}
+                    onPress={() => setReturnModalVisible(true)}
+                  >
+                    <Text style={styles.buttonText}>➕ مرتجع</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[
@@ -2586,8 +2859,7 @@ export default function ClientDetails() {
             >
               <Text style={styles.buttonText}>الغاء</Text>
             </TouchableOpacity>
-            {/* <Button title="تأكيد الترحيل"
-             onPress={() => {
+            {/* <Button title="تأكيد الترحيل" onPress={() => {
               if (!clientId || !selectedInvoice) return;
 
               const sortedInvoices = [...invoices].sort(
@@ -2988,6 +3260,66 @@ export default function ClientDetails() {
           </View>
         </View>
       </Modal>
+      <Modal
+        visible={returnModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setReturnModalVisible(false)}
+      >
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <View style={{ backgroundColor: "white", padding: 20, borderRadius: 10, width: "80%" }}>
+            <Text style={{ fontWeight: "bold", fontSize: 18, textAlign: "center", marginBottom: 10 }}>
+              إضافة مرتجع
+            </Text>
+
+            <TextInput
+              placeholder="مبلغ المرتجع"
+              value={returnAmount}
+              onChangeText={(text) => {
+                const cleaned = arabicToEnglishNumbers(text).replace(/[^0-9.]/g, "");
+                const num = Number(cleaned);
+                if (!isNaN(num) && selectedInvoice) {
+                  if (num > selectedInvoice.remaining) {
+                    setReturnAmount(selectedInvoice.remaining.toString());
+                    Alert.alert("تنبيه", `المرتجع لا يمكن أن يتجاوز ${selectedInvoice.remaining} جنيه`);
+                  } else {
+                    setReturnAmount(cleaned);
+                  }
+                } else {
+                  setReturnAmount(cleaned);
+                }
+              }}
+              keyboardType="numeric"
+              style={{ borderWidth: 1, borderColor: "#ccc", padding: 10, marginBottom: 10, borderRadius: 5 }}
+            />
+
+            <TextInput
+              placeholder="سبب المرتجع"
+              value={returnReason}
+              onChangeText={setReturnReason}
+              multiline
+              style={{ borderWidth: 1, borderColor: "#ccc", padding: 10, marginBottom: 10, borderRadius: 5, minHeight: 60, textAlignVertical: "top" }}
+            />
+
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 10 }}>
+              <TouchableOpacity style={[styles.button, { flex: 1, marginRight: 5 }]} onPress={addReturnToInvoice}>
+                <Text style={styles.buttonText}>حفظ</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, { flex: 1, marginLeft: 5, backgroundColor: "red" }]}
+                onPress={() => {
+                  setReturnModalVisible(false);
+                  setReturnAmount("");
+                  setReturnReason("");
+                }}
+              >
+                <Text style={styles.buttonText}>إلغاء</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
+
 }

@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
   addDoc,
   collection,
@@ -10,7 +10,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -62,32 +62,53 @@ const Home = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const hasLoaded = useRef(false);
   const clientsListRef = useRef<FlatList<Client>>(null);
-  const hasRestoredScroll = useRef(false);
   const [loading, setLoading] = useState(true);
+  const pendingRestoreOffset = useRef<number | null>(null);
 
+  useFocusEffect(
+    useCallback(() => {
+      if (savedHomeScrollOffset > 0) {
+        pendingRestoreOffset.current = savedHomeScrollOffset;
+      }
+    }, []),
+  );
   useEffect(() => {
     if (typeof restoredSearch === "string") setSearch(restoredSearch);
   }, [restoredSearch]);
 
-  useEffect(() => {
-    if (
-      loading ||
-      hasRestoredScroll.current ||
-      savedHomeScrollOffset <= 0 ||
-      filteredClients.length === 0
-    ) {
-      return;
-    }
+  // useEffect(() => {
+  //   if (
+  //     loading ||
+  //     pendingRestoreOffset.current !== null ||
+  //     savedHomeScrollOffset <= 0 ||
+  //     filteredClients.length === 0
+  //   ) {
+  //     return;
+  //   }
 
-    const frame = requestAnimationFrame(() => {
-      clientsListRef.current?.scrollToOffset({
-        offset: savedHomeScrollOffset,
-        animated: false,
+  //   const frame = requestAnimationFrame(() => {
+  //     clientsListRef.current?.scrollToOffset({
+  //       offset: savedHomeScrollOffset,
+  //       animated: false,
+  //     });
+  //     pendingRestoreOffset.current = null;
+  //   });
+  //   return () => cancelAnimationFrame(frame);
+  // }, [filteredClients.length, loading]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (savedHomeScrollOffset <= 0) return;
+
+      const frame = requestAnimationFrame(() => {
+        clientsListRef.current?.scrollToOffset({
+          offset: savedHomeScrollOffset,
+          animated: false,
+        });
       });
-      hasRestoredScroll.current = true;
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [filteredClients.length, loading]);
+      return () => cancelAnimationFrame(frame);
+    }, []),
+  );
 
 const [error,setError]=useState("")
   const loadClients = async () => {
@@ -327,6 +348,15 @@ const [error,setError]=useState("")
               onScroll={(event) => {
                 savedHomeScrollOffset = event.nativeEvent.contentOffset.y;
               }}
+                onContentSizeChange={() => {
+                  if (pendingRestoreOffset.current != null) {
+                    const offset = pendingRestoreOffset.current;
+                    pendingRestoreOffset.current = null;
+                    requestAnimationFrame(() => {
+                      clientsListRef.current?.scrollToOffset({ offset, animated: false });
+                    });
+                  }
+                }}
               renderItem={({ item }) => (
                 <View
                   style={[
@@ -335,11 +365,16 @@ const [error,setError]=useState("")
                   ]}
                 >
                   <TouchableOpacity
-                    onPress={() =>
+                    onPress={() => {
+                      // نحفظ الموضع قبل الانتقال حتى يعود المستخدم لنفس العميل في القائمة.
+                      clientsListRef.current?.scrollToOffset({
+                        offset: savedHomeScrollOffset,
+                        animated: false,
+                      });
                       router.push(
                         `/screens/ClientDetails?id=${encodeURIComponent(item.id)}&name=${encodeURIComponent(item.name)}&country=${encodeURIComponent(item.country)}&returnSearch=${encodeURIComponent(search)}`,
-                      )
-                    }
+                      );
+                    }}
                   >
                     <Text style={[styles.clientName, { textAlign: "left" }]}>
                       {item.name}
