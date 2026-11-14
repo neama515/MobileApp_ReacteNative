@@ -1583,7 +1583,17 @@ export default function ClientDetails() {
                 إدارة قائمة البنود ({catalogBands.length})
               </Text>
             </TouchableOpacity>
-            <View style={{ flexDirection: "row-reverse", alignItems: "center", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, marginVertical: 5, paddingHorizontal: 10 }}>
+            <View
+              style={[
+                styles.input,
+                {
+                  flexDirection: "row-reverse",
+                  alignItems: "center",
+                  paddingHorizontal: 10,
+                  paddingVertical: 0,
+                },
+              ]}
+            >
               <Ionicons name="search" size={20} color="#34699A" />
               <TextInput
                 placeholder="ابحث عن بند محفوظ أو اكتب اسم بند جديد"
@@ -1594,7 +1604,7 @@ export default function ClientDetails() {
                   setNewBandName(value);
                   setCatalogVisible(true);
                 }}
-                style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 8, color: "#000", textAlign: "right" }}
+                style={{ flex: 1, paddingVertical: 4, paddingHorizontal: 8, color: "#000", textAlign: "right" }}
               />
             </View>
 
