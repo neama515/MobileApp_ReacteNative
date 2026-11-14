@@ -7,6 +7,7 @@ import * as Sharing from "expo-sharing";
 import {
   addDoc,
   collection,
+  deleteField,
   deleteDoc,
   doc,
   getDoc,
@@ -14,6 +15,7 @@ import {
   query,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -27,6 +29,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import type { ViewInstance } from "react-native";
 import { captureRef } from "react-native-view-shot";
 import { useAuth } from "../../context/AuthContext";
 import { styles } from "../../style/styles";
@@ -112,7 +115,8 @@ export default function ClientDetails() {
   const [newBandType, setNewBandType] = useState<Band["type"]>();
   const [catalogBands, setCatalogBands] = useState<Band[]>([]);
   const [catalogVisible, setCatalogVisible] = useState(false);
-  const [catalogSearch, setCatalogSearch] = useState("");
+  const [catalogManagementVisible, setCatalogManagementVisible] = useState(false);
+  const [catalogManagementSearch, setCatalogManagementSearch] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [qtyInputs, setQtyInputs] = useState<{ [key: string]: string }>({});
 
@@ -137,8 +141,8 @@ export default function ClientDetails() {
   const [returnAmount, setReturnAmount] = useState("");
   const [returnReason, setReturnReason] = useState("");
 
-  const invoiceRef = useRef<View>(null);
-  const invoiceCaptureRef = useRef<View>(null);
+  const invoiceRef = useRef<ViewInstance | null>(null);
+  const invoiceCaptureRef = useRef<ViewInstance | null>(null);
   const { user } = useAuth();
 
   const [initialPayment, setInitialPayment] = useState("");
@@ -163,6 +167,20 @@ export default function ClientDetails() {
     new Date().toISOString(),
   );
   const [showInvoiceDatePicker, setShowInvoiceDatePicker] = useState(false);
+
+  const normalizeBandName = (value: string) => value.trim().toLocaleLowerCase();
+  const matchesBandSearch = (bandName: string, search: string) => {
+    const normalize = (value: string) =>
+      value
+        .toLocaleLowerCase()
+        .normalize("NFC")
+        .replace(/[،,؛;.!؟?]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const searchWords = normalize(search).split(" ").filter(Boolean);
+    const normalizedBandName = normalize(bandName);
+    return searchWords.every((word) => normalizedBandName.includes(word));
+  };
 
   const [paymentsModalVisible, setPaymentsModalVisible] = useState(false);
   const [editPaymentModalVisible, setEditPaymentModalVisible] = useState(false);
@@ -264,6 +282,11 @@ export default function ClientDetails() {
   // add band
   const addBand = async () => {
     if (!newBandName || !newBandPrice || !clientId) return;
+    const bandKey = normalizeBandName(newBandName);
+    if (bands.some((band) => normalizeBandName(band.name) === bandKey)) {
+      Alert.alert("البند موجود", "هذا البند موجود بالفعل لدى هذا العميل.");
+      return;
+    }
     const newBand = {
       name: newBandName,
       price: parseFloat(arabicToEnglishNumbers(newBandPrice)),
@@ -280,15 +303,14 @@ export default function ClientDetails() {
     setNewBandName("");
     setNewBandPrice("");
     setNewBandType(undefined);
+    setCatalogVisible(false);
     setCatalogBands((previous) => {
       const key = newBand.name.trim().toLocaleLowerCase();
       const existingIndex = previous.findIndex(
         (band) => band.name.trim().toLocaleLowerCase() === key,
       );
       if (existingIndex < 0) return [...previous, { id: docRef.id, ...newBand }];
-      const updated = [...previous];
-      updated[existingIndex] = { ...updated[existingIndex], ...newBand };
-      return updated;
+      return previous;
     });
   };
 
@@ -296,40 +318,146 @@ export default function ClientDetails() {
     setNewBandName(band.name);
     setNewBandPrice(String(band.price));
     setNewBandType(band.type);
-    setCatalogSearch("");
     setCatalogVisible(false);
   };
 
   // edit band
   const saveEditedBand = async () => {
-    if (!clientId || !editBandData) return;
-    const updated = {
-      name: editName,
-      price: parseFloat(arabicToEnglishNumbers(editPrice)),
-      type: editType,
-    };
-
-    if (updated.type === undefined) {
-      delete updated.type;
+    if (!user || !editBandData || !editName.trim() || !editPrice.trim()) return;
+    const parsedPrice = Number(arabicToEnglishNumbers(editPrice));
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      Alert.alert("سعر غير صالح", "أدخلي سعرًا صحيحًا للبند.");
+      return;
     }
-    await updateDoc(
-      doc(db, "clients", clientId, "items", editBandData.id),
-      updated,
-    );
-    setBands((prev) =>
-      prev.map((b) => (b.id === editBandData.id ? { ...b, ...updated } : b)),
-    );
-    setEditModalVisible(false);
+    try {
+      const oldKey = normalizeBandName(editBandData.name);
+      const newKey = normalizeBandName(editName);
+      if (
+        newKey !== oldKey &&
+        catalogBands.some((band) => normalizeBandName(band.name) === newKey)
+      ) {
+        Alert.alert("الاسم موجود", "يوجد بند آخر بهذا الاسم في القائمة.");
+        return;
+      }
+      const updated: Omit<Band, "id"> = {
+        name: editName.trim(),
+        price: parsedPrice,
+        type: editType,
+      };
+      const clientsSnapshot = await getDocs(
+        query(collection(db, "clients"), where("userId", "==", user.uid)),
+      );
+      const itemSnapshots = await Promise.all(
+        clientsSnapshot.docs.map((client) =>
+          getDocs(collection(db, "clients", client.id, "items")),
+        ),
+      );
+      const matchingRefs = itemSnapshots.flatMap((snapshot) =>
+        snapshot.docs
+          .filter(
+            (itemDoc) =>
+              normalizeBandName(String(itemDoc.data().name || "")) === oldKey,
+          )
+          .map((itemDoc) => itemDoc.ref),
+      );
+      const updateData: Record<string, unknown> = {
+        name: updated.name,
+        price: updated.price,
+        type: editType === undefined ? deleteField() : editType,
+      };
+      for (let index = 0; index < matchingRefs.length; index += 450) {
+        const batch = writeBatch(db);
+        matchingRefs.slice(index, index + 450).forEach((ref) => {
+          batch.update(ref, updateData);
+        });
+        await batch.commit();
+      }
+      setBands((previous) =>
+        previous.map((band) =>
+          normalizeBandName(band.name) === oldKey
+            ? { ...band, ...updated }
+            : band,
+        ),
+      );
+      setCatalogBands((previous) => {
+        const uniqueBands = new Map<string, Band>();
+        previous
+          .map((band) =>
+            normalizeBandName(band.name) === oldKey
+              ? { ...band, ...updated }
+              : band,
+          )
+          .forEach((band) => {
+            const key = normalizeBandName(band.name);
+            if (!uniqueBands.has(key)) uniqueBands.set(key, band);
+          });
+        return Array.from(uniqueBands.values());
+      });
+      setSelectedInvoiceItems((previous) =>
+        previous.map((item) =>
+          normalizeBandName(item.name) === oldKey
+            ? { ...item, ...updated }
+            : item,
+        ),
+      );
+      setEditModalVisible(false);
+      setEditBandData(null);
+    } catch (error) {
+      console.error("Error updating catalog band:", error);
+      Alert.alert("تعذر التعديل", "لم نتمكن من تحديث البند. حاولي مرة أخرى.");
+    }
   };
 
-  //  delete band
-  const deleteBand = async (id: string) => {
-    if (!clientId) return;
-    await deleteDoc(doc(db, "clients", clientId, "items", id));
-    setBands((prev) => prev.filter((b) => b.id !== id));
-    Alert.alert("تم الحذف", "تم حذف البند بنجاح ✅");
-  };
   // calc total of all bands of an invoice
+  const deleteCatalogBand = async (band: Band) => {
+    if (!user) return;
+    const bandKey = normalizeBandName(band.name);
+    try {
+      const clientsSnapshot = await getDocs(
+        query(collection(db, "clients"), where("userId", "==", user.uid)),
+      );
+      const itemSnapshots = await Promise.all(
+        clientsSnapshot.docs.map((client) =>
+          getDocs(collection(db, "clients", client.id, "items")),
+        ),
+      );
+      const matchingRefs = itemSnapshots.flatMap((snapshot) =>
+        snapshot.docs
+          .filter(
+            (itemDoc) =>
+              normalizeBandName(String(itemDoc.data().name || "")) === bandKey,
+          )
+          .map((itemDoc) => itemDoc.ref),
+      );
+      for (let index = 0; index < matchingRefs.length; index += 450) {
+        const batch = writeBatch(db);
+        matchingRefs
+          .slice(index, index + 450)
+          .forEach((ref) => batch.delete(ref));
+        await batch.commit();
+      }
+      setBands((previous) =>
+        previous.filter((item) => normalizeBandName(item.name) !== bandKey),
+      );
+      setCatalogBands((previous) =>
+        previous.filter((item) => normalizeBandName(item.name) !== bandKey),
+      );
+      setSelectedInvoiceItems((previous) =>
+        previous.filter((item) => normalizeBandName(item.name) !== bandKey),
+      );
+      setQtyInputs((previous) => {
+        const next = { ...previous };
+        bands
+          .filter((item) => normalizeBandName(item.name) === bandKey)
+          .forEach((item) => delete next[item.id]);
+        return next;
+      });
+    } catch (error) {
+      console.error("Error deleting catalog band:", error);
+      Alert.alert("تعذر الحذف", "لم نتمكن من حذف البند. حاولي مرة أخرى.");
+    }
+  };
+
   const calculateTotal = (items: InvoiceItem[]) =>
     items.reduce((sum, item) => sum + item.price * item.qty, 0);
   // calc total of payments of an invoice
@@ -1410,141 +1538,138 @@ export default function ClientDetails() {
           }}
         >
           <TouchableOpacity onPress={() => setActiveTab("bands")}>
-            <Text style={activeTab === "bands" ? styles.activeTab : styles.tab}>
+            <Text style={styles.tab}>
               الأصناف
             </Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setActiveTab("invoices")}>
             <Text
-              style={activeTab === "invoices" ? styles.activeTab : styles.tab}
+              style={styles.activeTab}
             >
               الفواتير
             </Text>
           </TouchableOpacity>
         </View>
       </View>}
-      <Modal visible={catalogVisible} transparent animationType="slide">
-        <View style={{ flex: 1, backgroundColor: "#0008", justifyContent: "center", padding: 20 }}>
-          <View style={{ backgroundColor: "white", borderRadius: 12, padding: 16, maxHeight: "80%" }}>
-            <Text style={{ color: "#000", fontSize: 18, fontWeight: "700", textAlign: "right", marginBottom: 12 }}>
-              اختاري بندًا من الكتالوج
-            </Text>
-            <TextInput
-              placeholder="ابحثي عن بند..."
-              placeholderTextColor="#666"
-              value={catalogSearch}
-              onChangeText={setCatalogSearch}
-              style={[styles.input, { marginVertical: 0, marginBottom: 10 }]}
-            />
-            <FlatList
-              data={catalogBands.filter((band) =>
-                band.name.toLocaleLowerCase().includes(catalogSearch.trim().toLocaleLowerCase()),
-              )}
-              keyExtractor={(item, index) => `${item.id}-${index}`}
-              ListEmptyComponent={<Text style={{ color: "#555", textAlign: "center", padding: 20 }}>{catalogBands.length ? "مفيش نتائج مطابقة" : "مفيش بنود محفوظة لسه"}</Text>}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => selectCatalogBand(item)}
-                  style={{ paddingVertical: 12, borderBottomWidth: 1, borderColor: "#ddd", flexDirection: "row-reverse", justifyContent: "space-between" }}
-                >
-                  <Text style={{ color: "#000" }}>{item.name}</Text>
-                  <Text style={{ color: "#34699A" }}>{item.price} جنيه</Text>
-                </TouchableOpacity>
-              )}
-            />
-            <TouchableOpacity onPress={() => { setCatalogVisible(false); setCatalogSearch(""); }} style={{ padding: 12, alignItems: "center" }}>
-              <Text style={{ color: "#34699A", fontWeight: "700" }}>إغلاق</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
       {activeTab === "bands" && (
-        <ScrollView
-          style={{ flex: 1 }}
-          nestedScrollEnabled
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}
-        >
-          <FlatList
-            scrollEnabled={false}
-            nestedScrollEnabled
-            keyboardShouldPersistTaps="handled"
-            ListHeaderComponent={
-              <View>
-                <TouchableOpacity
-                  style={[
-                    styles.button,
-                    { flexDirection: "row", paddingVertical: 10, marginBottom: 0 },
-                  ]}
-                  onPress={goBackToClients}
-                >
-                  <Ionicons name="arrow-forward" size={30} color="white" style={{ marginRight: 8 }} />
-                  <Text style={styles.buttonText}>الرجوع</Text>
-                </TouchableOpacity>
-                <View style={{ flexDirection: "row", justifyContent: "center", marginVertical: 5, gap: 20 }}>
-                  <TouchableOpacity onPress={() => setActiveTab("bands")}>
-                    <Text style={activeTab === "bands" ? styles.activeTab : styles.tab}>الأصناف</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => setActiveTab("invoices")}>
-                    <Text style={activeTab === "invoices" ? styles.activeTab : styles.tab}>الفواتير</Text>
-                  </TouchableOpacity>
-                </View>
-                <TouchableOpacity
-                  onPress={() => setCatalogVisible(true)}
-                  style={[styles.input, { justifyContent: "center", minHeight: 48 }]}
-                >
-                  <Text style={{ color: "#000", textAlign: "right" }}>
-                    اختاري بندًا من الكتالوج ({catalogBands.length})
-                  </Text>
-                </TouchableOpacity>
-                <TextInput
-                  placeholder="اسم الصنف"
-                  placeholderTextColor="#000"
-                  value={newBandName}
-                  onChangeText={setNewBandName}
-                  style={styles.input}
-                />
-                <TextInput
-                  placeholder="السعر لكل وحدة"
-                  placeholderTextColor="#000"
-                  value={newBandPrice}
-                  onChangeText={setNewBandPrice}
-                  keyboardType="numeric"
-                  style={styles.input}
-                />
-                <View style={{ flexDirection: "row", gap: 10, marginBottom: 7 }}>
-                  {(["عدد", "كيلو"] as const).map((t) => (
-                    <TouchableOpacity
-                      key={t}
-                      onPress={() => setNewBandType(t)}
-                      style={[
-                        styles.typeBtn,
-                        { paddingHorizontal: 20 },
-                        newBandType === t && { backgroundColor: "#34699A" },
-                      ]}
-                    >
-                      <Text style={{ color: newBandType === t ? "white" : "black" }}>{t}</Text>
-                    </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity
-                    style={[styles.button, { paddingHorizontal: 22 }]}
-                    onPress={addBand}
-                  >
-                    <Text style={styles.buttonText}>إضافة صنف</Text>
-                  </TouchableOpacity>
-                </View>
-                <TextInput
-                  placeholder="ابحث عن بند..."
-                  placeholderTextColor="#000"
-                  value={searchTerm}
-                  onChangeText={setSearchTerm}
-                  style={[styles.input, { marginVertical: 0 }]}
+        <View style={{ flex: 1 }}>
+          <View>
+            <TouchableOpacity
+              style={[styles.button, { flexDirection: "row", paddingVertical: 10, marginBottom: 0 }]}
+              onPress={goBackToClients}
+            >
+              <Ionicons name="arrow-forward" size={30} color="white" style={{ marginRight: 8 }} />
+              <Text style={styles.buttonText}>الرجوع</Text>
+            </TouchableOpacity>
+
+            <View style={{ flexDirection: "row", justifyContent: "center", marginVertical: 5, gap: 20 }}>
+              <TouchableOpacity onPress={() => setActiveTab("bands")}>
+                <Text style={styles.activeTab}>الأصناف</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setActiveTab("invoices")}>
+                <Text style={styles.tab}>الفواتير</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => {
+                setCatalogManagementSearch("");
+                setCatalogManagementVisible(true);
+                setCatalogVisible(false);
+              }}
+              style={{ alignSelf: "flex-end", paddingVertical: 8, paddingHorizontal: 10, marginBottom: 4 }}
+            >
+              <Text style={{ color: "#34699A", fontWeight: "700" }}>
+                إدارة قائمة البنود ({catalogBands.length})
+              </Text>
+            </TouchableOpacity>
+            <View style={{ flexDirection: "row-reverse", alignItems: "center", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, marginVertical: 5, paddingHorizontal: 10 }}>
+              <Ionicons name="search" size={20} color="#34699A" />
+              <TextInput
+                placeholder="ابحث عن بند محفوظ أو اكتب اسم بند جديد"
+                placeholderTextColor="#000"
+                value={newBandName}
+                onFocus={() => setCatalogVisible(true)}
+                onChangeText={(value) => {
+                  setNewBandName(value);
+                  setCatalogVisible(true);
+                }}
+                style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 8, color: "#000", textAlign: "right" }}
+              />
+            </View>
+
+            {catalogVisible && (
+              <View style={{ maxHeight: 170, marginTop: -8, marginBottom: 8, borderWidth: 1, borderColor: "#d1d5db", borderRadius: 8, backgroundColor: "white" }}>
+                <FlatList
+                  data={catalogBands.filter(
+                    (band) =>
+                      !bands.some((clientBand) => normalizeBandName(clientBand.name) === normalizeBandName(band.name)) &&
+                      band.name.toLocaleLowerCase().includes(newBandName.trim().toLocaleLowerCase()),
+                  )}
+                  keyboardShouldPersistTaps="always"
+                  keyExtractor={(item, index) => `${item.id}-suggestion-${index}`}
+                  ListEmptyComponent={<Text style={{ color: "#555", textAlign: "center", padding: 12 }}>مفيش بنود متاحة للاختيار</Text>}
+                  renderItem={({ item }) => (
+                    <View style={{ flexDirection: "row-reverse", alignItems: "center", borderBottomWidth: 1, borderColor: "#eee", paddingHorizontal: 8 }}>
+                      <TouchableOpacity onPress={() => selectCatalogBand(item)} style={{ flex: 1, paddingVertical: 9 }}>
+                        <Text style={{ color: "#000", textAlign: "right" }}>{item.name}</Text>
+                        <Text style={{ color: "#34699A", textAlign: "right" }}>{item.price} جنيه</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => { setEditBandData(item); setEditName(item.name); setEditPrice(String(item.price)); setEditType(item.type); setEditModalVisible(true); }} style={{ padding: 7, backgroundColor: "#ebbf24", borderRadius: 6 }}>
+                        <Text style={{ color: "#000" }}>تعديل</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => Alert.alert("تأكيد حذف البند", "سيُحذف «" + item.name + "» من بنود كل العملاء. الفواتير السابقة ستظل كما هي.", [
+                        { text: "إلغاء", style: "cancel" },
+                        { text: "حذف", style: "destructive", onPress: () => deleteCatalogBand(item) },
+                      ])} style={{ marginLeft: 6, padding: 7, backgroundColor: "#8C1007", borderRadius: 6 }}>
+                        <Text style={{ color: "white" }}>حذف</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 />
               </View>
-            }
-            data={bands.filter((b) =>
-              b.name.toLowerCase().includes(searchTerm.toLowerCase()),
+            )}
+
+            <TextInput
+              placeholder="السعر لكل وحدة"
+              placeholderTextColor="#000"
+              value={newBandPrice}
+              onChangeText={setNewBandPrice}
+              keyboardType="numeric"
+              style={styles.input}
+            />
+            <View style={{ flexDirection: "row", gap: 10, marginBottom: 7 }}>
+              {(["عدد", "كيلو"] as const).map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  onPress={() => setNewBandType(type)}
+                  style={[
+                    styles.typeBtn,
+                    { paddingHorizontal: 20 },
+                    newBandType === type && { backgroundColor: "#34699A" },
+                  ]}
+                >
+                  <Text style={{ color: newBandType === type ? "white" : "black" }}>{type}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity style={[styles.button, { paddingHorizontal: 22 }]} onPress={addBand}>
+                <Text style={styles.buttonText}>إضافة صنف</Text>
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              placeholder="ابحث عن بند..."
+              placeholderTextColor="#000"
+              value={searchTerm}
+              onChangeText={setSearchTerm}
+              style={[styles.input, { marginVertical: 0 }]}
+            />
+          </View>
+          <FlatList
+            style={{ flex: 1 }}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
+            data={bands.filter((band) =>
+              matchesBandSearch(band.name, searchTerm),
             )}
             keyExtractor={(item) => item.id}
             renderItem={({ item: band }) => {
@@ -1632,7 +1757,7 @@ export default function ClientDetails() {
                             {
                               text: "حذف",
                               style: "destructive",
-                              onPress: () => deleteBand(band.id),
+                              onPress: () => deleteCatalogBand(band),
                             },
                           ],
                         );
@@ -1706,8 +1831,7 @@ export default function ClientDetails() {
                 </View>
               );
             }}
-          />
-        </ScrollView>
+          /></View>
       )}
 
       {/* Tab Invoices */}
@@ -2041,7 +2165,82 @@ export default function ClientDetails() {
         </View>
       )}
 
-      <Modal
+            <Modal
+        visible={catalogManagementVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setCatalogManagementVisible(false)}
+      >
+        <View style={{ flex: 1, justifyContent: "center", padding: 20, backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <View style={{ maxHeight: "80%", backgroundColor: "white", borderRadius: 12, padding: 16 }}>
+            <Text style={{ color: "#000", fontSize: 20, fontWeight: "700", textAlign: "right", marginBottom: 12 }}>
+              إدارة قائمة البنود
+            </Text>
+            <TextInput
+              placeholder="ابحثي عن بند"
+              placeholderTextColor="#666"
+              value={catalogManagementSearch}
+              onChangeText={setCatalogManagementSearch}
+              style={[styles.input, { marginVertical: 0, marginBottom: 10 }]}
+            />
+            <FlatList
+              data={catalogBands.filter((band) =>
+                band.name.toLocaleLowerCase().includes(catalogManagementSearch.trim().toLocaleLowerCase()),
+              )}
+              keyboardShouldPersistTaps="handled"
+              keyExtractor={(item, index) => `${item.id}-manage-${index}`}
+              ListEmptyComponent={<Text style={{ color: "#555", textAlign: "center", padding: 16 }}>مفيش بنود محفوظة</Text>}
+              renderItem={({ item }) => (
+                <View style={{ flexDirection: "row-reverse", alignItems: "center", gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderColor: "#eee" }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: "#000", textAlign: "right", fontWeight: "600" }}>{item.name}</Text>
+                    <Text style={{ color: "#34699A", textAlign: "right" }}>{item.price} جنيه</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setEditBandData(item);
+                      setEditName(item.name);
+                      setEditPrice(String(item.price));
+                      setEditType(item.type);
+                      setEditModalVisible(true);
+                    }}
+                    style={{ padding: 8, backgroundColor: "#ebbf24", borderRadius: 6 }}
+                  >
+                    <Text style={{ color: "#000" }}>تعديل</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() =>
+                      Alert.alert(
+                        "تأكيد حذف البند",
+                        "سيُحذف «" + item.name + "» من بنود كل العملاء. الفواتير السابقة ستظل كما هي.",
+                        [
+                          { text: "إلغاء", style: "cancel" },
+                          {
+                            text: "حذف",
+                            style: "destructive",
+                            onPress: () => deleteCatalogBand(item),
+                          },
+                        ],
+                      )
+                    }
+                    style={{ padding: 8, backgroundColor: "#8C1007", borderRadius: 6 }}
+                  >
+                    <Text style={{ color: "white" }}>حذف</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            />
+            <TouchableOpacity
+              onPress={() => setCatalogManagementVisible(false)}
+              style={{ alignItems: "center", padding: 12, marginTop: 8 }}
+            >
+              <Text style={{ color: "#34699A", fontWeight: "700" }}>إغلاق</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+<Modal
         visible={editModalVisible}
         transparent
         animationType="slide"

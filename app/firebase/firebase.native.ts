@@ -1,7 +1,14 @@
 import ReactNativeAsyncStorage from "@react-native-async-storage/async-storage";
 import { initializeApp } from "firebase/app";
-import { getReactNativePersistence, initializeAuth } from "firebase/auth";
+import { initializeAuth } from "firebase/auth";
+import type { Persistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+
+// Firebase exposes this function in its React Native runtime entry, but omits
+// it from the package's shared TypeScript declarations.
+const { getReactNativePersistence } = require("firebase/auth") as {
+  getReactNativePersistence: (storage: typeof ReactNativeAsyncStorage) => Persistence;
+};
 
 const firebaseConfig = {
   apiKey: "AIzaSyD4NdTF7jzXyok5I_DvILrzRQGAsk47Zqk",

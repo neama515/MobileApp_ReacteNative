@@ -6,7 +6,7 @@ import {
   signOut,
   User,
   UserCredential,
-} from "@firebase/auth";
+} from "firebase/auth";
 import { Platform } from "react-native";
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 import { auth } from "../app/firebase/firebase";

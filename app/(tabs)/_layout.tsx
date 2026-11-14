@@ -29,7 +29,7 @@ export default function TabLayout() {
         options={{
           title: "العملاء",
           tabBarIcon: ({ color }) => (
-            <Ionicons name="people" size={28} color={color} />
+            <Ionicons name="people" size={28} color={typeof color === "number" ? "#34699A" : color ?? "#34699A"} />
           ),
         }}
       />
@@ -39,7 +39,7 @@ export default function TabLayout() {
         options={{
           title: "المديونيات",
           tabBarIcon: ({ color }) => (
-            <Ionicons name="wallet" size={26} color={color} />
+            <Ionicons name="wallet" size={26} color={typeof color === "number" ? "#34699A" : color ?? "#34699A"} />
           ),
         }}
       />
@@ -49,7 +49,7 @@ export default function TabLayout() {
         options={{
           title: "الملف الشخصي",
           tabBarIcon: ({ color }) => (
-            <Ionicons name="person-circle" size={28} color={color} />
+            <Ionicons name="person-circle" size={28} color={typeof color === "number" ? "#34699A" : color ?? "#34699A"} />
           ),
         }}
       />
