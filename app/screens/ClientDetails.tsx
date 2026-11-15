@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
 import * as Print from "expo-print";
@@ -22,6 +23,7 @@ import {
   Alert,
   FlatList,
   Modal,
+  Pressable,
   ScrollView,
   StatusBar,
   Text,
@@ -115,6 +117,8 @@ export default function ClientDetails() {
   const [newBandType, setNewBandType] = useState<Band["type"]>();
   const [catalogBands, setCatalogBands] = useState<Band[]>([]);
   const [catalogVisible, setCatalogVisible] = useState(false);
+  const catalogMenuRef = useRef<ViewInstance | null>(null);
+  const [catalogMenuBounds, setCatalogMenuBounds] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [catalogManagementVisible, setCatalogManagementVisible] = useState(false);
   const [catalogManagementSearch, setCatalogManagementSearch] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -217,11 +221,24 @@ export default function ClientDetails() {
     fetchBands();
   }, [clientId, user]);
 
-  // Load this user's existing items so they can be reused across clients.
+  // Load the catalog from local persistent storage. Existing client items are
+  // scanned only when this device has no saved catalog yet.
   useEffect(() => {
     if (!user) return;
 
     const fetchCatalog = async () => {
+      const cacheKey = `itemCatalog:${user.uid}`;
+      try {
+        const cachedCatalog = await AsyncStorage.getItem(cacheKey);
+        if (cachedCatalog) {
+          const parsed = JSON.parse(cachedCatalog) as Band[];
+          setCatalogBands(parsed);
+          return;
+        }
+      } catch (err) {
+        console.warn("Could not read cached item catalog:", err);
+      }
+
       try {
         const clientsSnapshot = await getDocs(
           query(collection(db, "clients"), where("userId", "==", user.uid)),
@@ -232,18 +249,16 @@ export default function ClientDetails() {
           ),
         );
         const uniqueBands = new Map<string, Band>();
-        itemSnapshots.forEach((snapshot) => {
-          snapshot.docs.forEach((itemDoc) => {
-            const data = itemDoc.data() as Omit<Band, "id">;
-            const key = data.name.trim().toLocaleLowerCase();
-            if (key && !uniqueBands.has(key)) {
-              uniqueBands.set(key, { id: itemDoc.id, ...data });
-            }
-          });
-        });
-        setCatalogBands(Array.from(uniqueBands.values()));
+        itemSnapshots.forEach((snapshot) => snapshot.docs.forEach((itemDoc) => {
+          const data = itemDoc.data() as Omit<Band, "id">;
+          const key = normalizeBandName(data.name || "");
+          if (key && !uniqueBands.has(key)) uniqueBands.set(key, { id: itemDoc.id, ...data });
+        }));
+        const loadedCatalog = Array.from(uniqueBands.values());
+        setCatalogBands(loadedCatalog);
+        await AsyncStorage.setItem(cacheKey, JSON.stringify(loadedCatalog));
       } catch (err) {
-        console.error("Error fetching item catalog:", err);
+        console.error("Error building item catalog cache:", err);
       }
     };
 
@@ -312,6 +327,12 @@ export default function ClientDetails() {
       if (existingIndex < 0) return [...previous, { id: docRef.id, ...newBand }];
       return previous;
     });
+    if (user) {
+      const nextCatalog = catalogBands.some((band) => normalizeBandName(band.name) === bandKey)
+        ? catalogBands
+        : [...catalogBands, { id: docRef.id, ...newBand }];
+      await AsyncStorage.setItem(`itemCatalog:${user.uid}`, JSON.stringify(nextCatalog)).catch(() => {});
+    }
   };
 
   const selectCatalogBand = (band: Band) => {
@@ -393,6 +414,12 @@ export default function ClientDetails() {
           });
         return Array.from(uniqueBands.values());
       });
+      const cachedCatalog = catalogBands
+        .map((band) => normalizeBandName(band.name) === oldKey
+          ? { ...band, ...updated }
+          : band)
+        .filter((band, index, all) => all.findIndex((entry) => normalizeBandName(entry.name) === normalizeBandName(band.name)) === index);
+      await AsyncStorage.setItem(`itemCatalog:${user.uid}`, JSON.stringify(cachedCatalog)).catch(() => {});
       setSelectedInvoiceItems((previous) =>
         previous.map((item) =>
           normalizeBandName(item.name) === oldKey
@@ -442,6 +469,10 @@ export default function ClientDetails() {
       setCatalogBands((previous) =>
         previous.filter((item) => normalizeBandName(item.name) !== bandKey),
       );
+      await AsyncStorage.setItem(
+        `itemCatalog:${user.uid}`,
+        JSON.stringify(catalogBands.filter((item) => normalizeBandName(item.name) !== bandKey)),
+      ).catch(() => {});
       setSelectedInvoiceItems((previous) =>
         previous.filter((item) => normalizeBandName(item.name) !== bandKey),
       );
@@ -1244,7 +1275,19 @@ export default function ClientDetails() {
   console.log("====================================");
 
   return (
-    <View style={[styles.container, { justifyContent: "flex-start" }]}>
+    <View
+      style={[styles.container, { justifyContent: "flex-start" }]}
+      onStartShouldSetResponderCapture={(event) => {
+        if (!catalogVisible) return false;
+        const { pageX, pageY } = event.nativeEvent;
+        const { x, y, width, height } = catalogMenuBounds;
+        const tappedInsideMenu =
+          width > 0 && pageX >= x && pageX <= x + width && pageY >= y && pageY <= y + height;
+        if (tappedInsideMenu) return false;
+        setCatalogVisible(false);
+        return true;
+      }}
+    >
       {selectedInvoice && (
         <View
           ref={invoiceCaptureRef}
@@ -1609,7 +1652,11 @@ export default function ClientDetails() {
             </View>
 
             {catalogVisible && (
-              <View style={{ maxHeight: 170, marginTop: -8, marginBottom: 8, borderWidth: 1, borderColor: "#d1d5db", borderRadius: 8, backgroundColor: "white" }}>
+              <View
+                ref={catalogMenuRef}
+                onLayout={() => catalogMenuRef.current?.measureInWindow((x, y, width, height) => setCatalogMenuBounds({ x, y, width, height }))}
+                style={{ maxHeight: 170, marginTop: -8, marginBottom: 8, borderWidth: 1, borderColor: "#d1d5db", borderRadius: 8, backgroundColor: "white" }}
+              >
                 <FlatList
                   data={catalogBands.filter(
                     (band) =>
@@ -2181,7 +2228,11 @@ export default function ClientDetails() {
         animationType="slide"
         onRequestClose={() => setCatalogManagementVisible(false)}
       >
-        <View style={{ flex: 1, justifyContent: "center", padding: 20, backgroundColor: "rgba(0,0,0,0.5)" }}>
+        <View style={{ flex: 1, justifyContent: "center", padding: 20 }}>
+          <Pressable
+            onPress={() => setCatalogManagementVisible(false)}
+            style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: "rgba(0,0,0,0.5)" }}
+          />
           <View style={{ maxHeight: "80%", backgroundColor: "white", borderRadius: 12, padding: 16 }}>
             <Text style={{ color: "#000", fontSize: 20, fontWeight: "700", textAlign: "right", marginBottom: 12 }}>
               إدارة قائمة البنود
