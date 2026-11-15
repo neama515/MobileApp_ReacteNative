@@ -1320,19 +1320,19 @@ export default function ClientDetails() {
           >
             {selectedInvoice.number}
           </Text>
-          <Text style={{ fontWeight: "bold", fontSize: 18, textAlign: "left" }}>
+          <Text style={{ fontWeight: "bold", fontSize: 18, textAlign: "right" }}>
             اسم العميل: <Text style={{ fontWeight: "400" }}>{name}</Text>
           </Text>
-          <Text style={{ fontWeight: "bold", fontSize: 18, textAlign: "left" }}>
+          <Text style={{ fontWeight: "bold", fontSize: 18, textAlign: "right" }}>
             البلد: <Text style={{ fontWeight: "400" }}>{country}</Text>
           </Text>
-          <Text style={{ fontWeight: "bold", fontSize: 18, textAlign: "left" }}>
+          <Text style={{ fontWeight: "bold", fontSize: 18, textAlign: "right" }}>
             التاريخ:{" "}
             <Text style={{ fontWeight: "400" }}>{selectedInvoice.date}</Text>
           </Text>
 
           <View style={{ borderWidth: 1, marginTop: 10 }}>
-            <View style={{ flexDirection: "row", borderBottomWidth: 1 }}>
+            <View style={{ flexDirection: "row-reverse", borderBottomWidth: 1 }}>
               <Text style={{ flex: 1, textAlign: "center", padding: 1 }}>
                 { }
               </Text>
@@ -1340,7 +1340,7 @@ export default function ClientDetails() {
               <Text
                 style={{
                   flex: 2,
-                  textAlign: "left",
+                  textAlign: "right",
                   fontWeight: "800",
                   padding: 10,
                   borderLeftWidth: 1,
@@ -1393,7 +1393,7 @@ export default function ClientDetails() {
             {selectedInvoice.items.map((band, index) => (
               <View
                 key={band.id}
-                style={{ flexDirection: "row", borderBottomWidth: 1 }}
+                style={{ flexDirection: "row-reverse", borderBottomWidth: 1 }}
               >
                 <Text style={{ flex: 1, textAlign: "center", padding: 1 }}>
                   {index + 1}
@@ -1402,7 +1402,7 @@ export default function ClientDetails() {
                 <Text
                   style={{
                     flex: 2,
-                    textAlign: "left",
+                    textAlign: "right",
                     fontWeight: "800",
                     padding: 10,
                     borderLeftWidth: 1,
@@ -1455,7 +1455,7 @@ export default function ClientDetails() {
 
             <View
               style={{
-                flexDirection: "row",
+                flexDirection: "row-reverse",
                 justifyContent: "space-between",
                 marginTop: 10,
                 paddingHorizontal: 5,
