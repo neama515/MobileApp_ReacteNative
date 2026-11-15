@@ -22,6 +22,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
+  I18nManager,
   Modal,
   Pressable,
   ScrollView,
@@ -36,6 +37,9 @@ import { captureRef } from "react-native-view-shot";
 import { useAuth } from "../../context/AuthContext";
 import { styles } from "../../style/styles";
 import { db } from "../firebase/firebase";
+
+I18nManager.allowRTL(false);
+I18nManager.forceRTL(false);
 
 type Band = {
   id: string;
@@ -1661,7 +1665,7 @@ export default function ClientDetails() {
                   data={catalogBands.filter(
                     (band) =>
                       !bands.some((clientBand) => normalizeBandName(clientBand.name) === normalizeBandName(band.name)) &&
-                      band.name.toLocaleLowerCase().includes(newBandName.trim().toLocaleLowerCase()),
+                      matchesBandSearch(band.name, newBandName),
                   )}
                   keyboardShouldPersistTaps="always"
                   keyExtractor={(item, index) => `${item.id}-suggestion-${index}`}
@@ -2246,7 +2250,7 @@ export default function ClientDetails() {
             />
             <FlatList
               data={catalogBands.filter((band) =>
-                band.name.toLocaleLowerCase().includes(catalogManagementSearch.trim().toLocaleLowerCase()),
+                matchesBandSearch(band.name, catalogManagementSearch),
               )}
               keyboardShouldPersistTaps="handled"
               keyExtractor={(item, index) => `${item.id}-manage-${index}`}
