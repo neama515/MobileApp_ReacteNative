@@ -22,7 +22,6 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
-  I18nManager,
   Modal,
   Pressable,
   ScrollView,
@@ -35,11 +34,9 @@ import {
 import type { ViewInstance } from "react-native";
 import { captureRef } from "react-native-view-shot";
 import { useAuth } from "../../context/AuthContext";
+import { useLoading } from "../../context/LoadingContext";
 import { styles } from "../../style/styles";
 import { db } from "../firebase/firebase";
-
-I18nManager.allowRTL(false);
-I18nManager.forceRTL(false);
 
 type Band = {
   id: string;
@@ -121,8 +118,6 @@ export default function ClientDetails() {
   const [newBandType, setNewBandType] = useState<Band["type"]>();
   const [catalogBands, setCatalogBands] = useState<Band[]>([]);
   const [catalogVisible, setCatalogVisible] = useState(false);
-  const catalogMenuRef = useRef<ViewInstance | null>(null);
-  const [catalogMenuBounds, setCatalogMenuBounds] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [catalogManagementVisible, setCatalogManagementVisible] = useState(false);
   const [catalogManagementSearch, setCatalogManagementSearch] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -131,6 +126,7 @@ export default function ClientDetails() {
   // Edit band
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editBandData, setEditBandData] = useState<Band | null>(null);
+  const [savingEditedBand, setSavingEditedBand] = useState(false);
   const [editName, setEditName] = useState("");
   const [editPrice, setEditPrice] = useState("");
   const [editType, setEditType] = useState<Band["type"]>();
@@ -152,6 +148,7 @@ export default function ClientDetails() {
   const invoiceRef = useRef<ViewInstance | null>(null);
   const invoiceCaptureRef = useRef<ViewInstance | null>(null);
   const { user } = useAuth();
+  const { runWithLoading } = useLoading();
 
   const [initialPayment, setInitialPayment] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
@@ -222,8 +219,8 @@ export default function ClientDetails() {
       }
     };
 
-    fetchBands();
-  }, [clientId, user]);
+    void runWithLoading("جاري تحميل الأصناف...", fetchBands);
+  }, [clientId, user, runWithLoading]);
 
   // Load the catalog from local persistent storage. Existing client items are
   // scanned only when this device has no saved catalog yet.
@@ -266,8 +263,8 @@ export default function ClientDetails() {
       }
     };
 
-    fetchCatalog();
-  }, [user]);
+    void runWithLoading("جاري تحميل قائمة الأصناف...", fetchCatalog);
+  }, [user, runWithLoading]);
 
   // Function to change arabic numbers to english (in price of band)
   function arabicToEnglishNumbers(str: string) {
@@ -295,8 +292,8 @@ export default function ClientDetails() {
       }
     };
 
-    fetchInvoices();
-  }, [clientId, user]);
+    void runWithLoading("جاري تحميل الفواتير...", fetchInvoices);
+  }, [clientId, user, runWithLoading]);
 
   // add band
   const addBand = async () => {
@@ -348,13 +345,14 @@ export default function ClientDetails() {
 
   // edit band
   const saveEditedBand = async () => {
-    if (!user || !editBandData || !editName.trim() || !editPrice.trim()) return;
+    if (savingEditedBand || !user || !editBandData || !editName.trim() || !editPrice.trim()) return;
     const parsedPrice = Number(arabicToEnglishNumbers(editPrice));
     if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
       Alert.alert("سعر غير صالح", "أدخلي سعرًا صحيحًا للبند.");
       return;
     }
     try {
+      setSavingEditedBand(true);
       const oldKey = normalizeBandName(editBandData.name);
       const newKey = normalizeBandName(editName);
       if (
@@ -369,21 +367,16 @@ export default function ClientDetails() {
         price: parsedPrice,
         type: editType,
       };
-      const clientsSnapshot = await getDocs(
-        query(collection(db, "clients"), where("userId", "==", user.uid)),
+      if (!clientId) return;
+      const currentClientBands = bands.filter(
+        (band) => normalizeBandName(band.name) === oldKey,
       );
-      const itemSnapshots = await Promise.all(
-        clientsSnapshot.docs.map((client) =>
-          getDocs(collection(db, "clients", client.id, "items")),
-        ),
-      );
-      const matchingRefs = itemSnapshots.flatMap((snapshot) =>
-        snapshot.docs
-          .filter(
-            (itemDoc) =>
-              normalizeBandName(String(itemDoc.data().name || "")) === oldKey,
-          )
-          .map((itemDoc) => itemDoc.ref),
+      if (currentClientBands.length === 0) {
+        Alert.alert("البند غير موجود", "افتحي البند من قائمة أصناف هذا العميل لتعديله.");
+        return;
+      }
+      const matchingRefs = currentClientBands.map((band) =>
+        doc(db, "clients", clientId, "items", band.id),
       );
       const updateData: Record<string, unknown> = {
         name: updated.name,
@@ -404,26 +397,6 @@ export default function ClientDetails() {
             : band,
         ),
       );
-      setCatalogBands((previous) => {
-        const uniqueBands = new Map<string, Band>();
-        previous
-          .map((band) =>
-            normalizeBandName(band.name) === oldKey
-              ? { ...band, ...updated }
-              : band,
-          )
-          .forEach((band) => {
-            const key = normalizeBandName(band.name);
-            if (!uniqueBands.has(key)) uniqueBands.set(key, band);
-          });
-        return Array.from(uniqueBands.values());
-      });
-      const cachedCatalog = catalogBands
-        .map((band) => normalizeBandName(band.name) === oldKey
-          ? { ...band, ...updated }
-          : band)
-        .filter((band, index, all) => all.findIndex((entry) => normalizeBandName(entry.name) === normalizeBandName(band.name)) === index);
-      await AsyncStorage.setItem(`itemCatalog:${user.uid}`, JSON.stringify(cachedCatalog)).catch(() => {});
       setSelectedInvoiceItems((previous) =>
         previous.map((item) =>
           normalizeBandName(item.name) === oldKey
@@ -436,6 +409,8 @@ export default function ClientDetails() {
     } catch (error) {
       console.error("Error updating catalog band:", error);
       Alert.alert("تعذر التعديل", "لم نتمكن من تحديث البند. حاولي مرة أخرى.");
+    } finally {
+      setSavingEditedBand(false);
     }
   };
 
@@ -1122,7 +1097,7 @@ export default function ClientDetails() {
       {
         text: "حذف",
         style: "destructive",
-        onPress: () => deletePaymentFromInvoice(clientId, currentInvoiceId, id),
+        onPress: () => runWithLoading("جاري حذف الدفعة...", () => deletePaymentFromInvoice(clientId, currentInvoiceId, id)),
       },
     ]);
   };
@@ -1279,19 +1254,7 @@ export default function ClientDetails() {
   console.log("====================================");
 
   return (
-    <View
-      style={[styles.container, { justifyContent: "flex-start" }]}
-      onStartShouldSetResponderCapture={(event) => {
-        if (!catalogVisible) return false;
-        const { pageX, pageY } = event.nativeEvent;
-        const { x, y, width, height } = catalogMenuBounds;
-        const tappedInsideMenu =
-          width > 0 && pageX >= x && pageX <= x + width && pageY >= y && pageY <= y + height;
-        if (tappedInsideMenu) return false;
-        setCatalogVisible(false);
-        return true;
-      }}
-    >
+    <View style={[styles.container, { justifyContent: "flex-start" }]}>
       {selectedInvoice && (
         <View
           ref={invoiceCaptureRef}
@@ -1559,7 +1522,7 @@ export default function ClientDetails() {
         </View>
       )}
 
-      {activeTab === "invoices" && <View>
+      <View>
         <TouchableOpacity
           style={[
             styles.button,
@@ -1578,46 +1541,27 @@ export default function ClientDetails() {
         {/* Tabs */}
         <View
           style={{
-            flexDirection: "row",
+            flexDirection: "row-reverse",
             justifyContent: "center",
             marginVertical: 5,
             gap: 20,
           }}
         >
           <TouchableOpacity onPress={() => setActiveTab("bands")}>
-            <Text style={styles.tab}>
+            <Text style={activeTab === "bands" ? styles.activeTab : styles.tab}>
               الأصناف
             </Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setActiveTab("invoices")}>
-            <Text
-              style={styles.activeTab}
-            >
+            <Text style={activeTab === "invoices" ? styles.activeTab : styles.tab}>
               الفواتير
             </Text>
           </TouchableOpacity>
         </View>
-      </View>}
+      </View>
       {activeTab === "bands" && (
         <View style={{ flex: 1 }}>
           <View>
-            <TouchableOpacity
-              style={[styles.button, { flexDirection: "row", paddingVertical: 10, marginBottom: 0 }]}
-              onPress={goBackToClients}
-            >
-              <Ionicons name="arrow-forward" size={30} color="white" style={{ marginRight: 8 }} />
-              <Text style={styles.buttonText}>الرجوع</Text>
-            </TouchableOpacity>
-
-            <View style={{ flexDirection: "row", justifyContent: "center", marginVertical: 5, gap: 20 }}>
-              <TouchableOpacity onPress={() => setActiveTab("bands")}>
-                <Text style={styles.activeTab}>الأصناف</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setActiveTab("invoices")}>
-                <Text style={styles.tab}>الفواتير</Text>
-              </TouchableOpacity>
-            </View>
-
             <TouchableOpacity
               onPress={() => {
                 setCatalogManagementSearch("");
@@ -1657,8 +1601,6 @@ export default function ClientDetails() {
 
             {catalogVisible && (
               <View
-                ref={catalogMenuRef}
-                onLayout={() => catalogMenuRef.current?.measureInWindow((x, y, width, height) => setCatalogMenuBounds({ x, y, width, height }))}
                 style={{ maxHeight: 170, marginTop: -8, marginBottom: 8, borderWidth: 1, borderColor: "#d1d5db", borderRadius: 8, backgroundColor: "white" }}
               >
                 <FlatList
@@ -1681,7 +1623,7 @@ export default function ClientDetails() {
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => Alert.alert("تأكيد حذف البند", "سيُحذف «" + item.name + "» من بنود كل العملاء. الفواتير السابقة ستظل كما هي.", [
                         { text: "إلغاء", style: "cancel" },
-                        { text: "حذف", style: "destructive", onPress: () => deleteCatalogBand(item) },
+                        { text: "حذف", style: "destructive", onPress: () => runWithLoading("جاري حذف الصنف من القائمة...", () => deleteCatalogBand(item)) },
                       ])} style={{ marginLeft: 6, padding: 7, backgroundColor: "#8C1007", borderRadius: 6 }}>
                         <Text style={{ color: "white" }}>حذف</Text>
                       </TouchableOpacity>
@@ -1699,7 +1641,7 @@ export default function ClientDetails() {
               keyboardType="numeric"
               style={styles.input}
             />
-            <View style={{ flexDirection: "row", gap: 10, marginBottom: 7 }}>
+            <View style={{ flexDirection: "row-reverse", justifyContent: "flex-start", gap: 10, marginBottom: 7 }}>
               {(["عدد", "كيلو"] as const).map((type) => (
                 <TouchableOpacity
                   key={type}
@@ -1713,7 +1655,7 @@ export default function ClientDetails() {
                   <Text style={{ color: newBandType === type ? "white" : "black" }}>{type}</Text>
                 </TouchableOpacity>
               ))}
-              <TouchableOpacity style={[styles.button, { paddingHorizontal: 22 }]} onPress={addBand}>
+              <TouchableOpacity style={[styles.button, { paddingHorizontal: 22 }]} onPress={() => runWithLoading("جاري إضافة الصنف...", addBand)}>
                 <Text style={styles.buttonText}>إضافة صنف</Text>
               </TouchableOpacity>
             </View>
@@ -1752,7 +1694,7 @@ export default function ClientDetails() {
                 >
                   <View
                     style={{
-                      flexDirection: "row",
+                      flexDirection: "row-reverse",
                       borderBottomWidth: 1,
                       borderColor: "#475569",
                     }}
@@ -1762,8 +1704,8 @@ export default function ClientDetails() {
                         flex: 2,
                         color: "#000",
                         fontWeight: "800",
-                        textAlign: "left",
-                        paddingLeft: 3,
+                        textAlign: "right",
+                        paddingRight: 3,
                         paddingVertical: 10,
 
                       }}
@@ -1798,10 +1740,10 @@ export default function ClientDetails() {
 
                   <View
                     style={{
-                      flexDirection: "row-reverse",
+                      flexDirection: "row",
                       gap: 5,
                       alignItems: "center",
-                      justifyContent: "center",
+                      justifyContent: "flex-end",
                     }}
                   >
                     <TouchableOpacity
@@ -1818,7 +1760,7 @@ export default function ClientDetails() {
                             {
                               text: "حذف",
                               style: "destructive",
-                              onPress: () => deleteCatalogBand(band),
+                              onPress: () => runWithLoading("جاري حذف الصنف من القائمة...", () => deleteCatalogBand(band)),
                             },
                           ],
                         );
@@ -2183,9 +2125,10 @@ export default function ClientDetails() {
                         : "#34699A",
                     },
                   ]}
-                  onPress={
-                    editSelectedInvoice ? saveInvoiceChanges : createInvoice
-                  }
+                  onPress={() => runWithLoading(
+                    editSelectedInvoice ? "جاري حفظ الفاتورة..." : "جاري إنشاء الفاتورة...",
+                    editSelectedInvoice ? saveInvoiceChanges : createInvoice,
+                  )}
                 >
                   <Text style={styles.buttonText}>
                     {editSelectedInvoice
@@ -2210,9 +2153,7 @@ export default function ClientDetails() {
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={styles.clientBox}
-                onPress={() => {
-                  setSelectedInvoice(item);
-                }}
+                onPress={() => setSelectedInvoice(item)}
               >
                 <Text style={{ fontWeight: "bold", textAlign: "center" }}>
                   رقم الفاتورة: {item.number || "—"}
@@ -2283,7 +2224,7 @@ export default function ClientDetails() {
                           {
                             text: "حذف",
                             style: "destructive",
-                            onPress: () => deleteCatalogBand(item),
+                            onPress: () => runWithLoading("جاري حذف الصنف من القائمة...", () => deleteCatalogBand(item)),
                           },
                         ],
                       )
@@ -2363,10 +2304,11 @@ export default function ClientDetails() {
               ))}
             </View>
             <TouchableOpacity
-              style={[styles.button, { marginVertical: 10 }]}
-              onPress={saveEditedBand}
+              style={[styles.button, { marginVertical: 10, opacity: savingEditedBand ? 0.6 : 1 }]}
+              onPress={() => runWithLoading("جاري حفظ تعديل الصنف...", saveEditedBand)}
+              disabled={savingEditedBand}
             >
-              <Text style={styles.buttonText}>حفظ</Text>
+              <Text style={styles.buttonText}>{savingEditedBand ? "جاري الحفظ..." : "حفظ"}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.button]}
@@ -2413,14 +2355,14 @@ export default function ClientDetails() {
                 <View style={[styles.actions, { margin: 0 }]}>
                   <TouchableOpacity
                     style={[styles.button, { margin: 0 }]}
-                    onPress={() => generateFullInvoiceImage(selectedInvoice!)}
+                    onPress={() => runWithLoading("جاري تجهيز صورة الفاتورة...", () => generateFullInvoiceImage(selectedInvoice!))}
                   >
                     <Text style={styles.buttonText}>تحميل صوره</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={[styles.button, { margin: 0 }]}
-                    onPress={() => generatePDF(selectedInvoice)}
+                    onPress={() => runWithLoading("جاري تجهيز ملف PDF...", () => generatePDF(selectedInvoice))}
                   >
                     <Text style={styles.buttonText}>تحميل PDF</Text>
                   </TouchableOpacity>
@@ -2737,11 +2679,11 @@ export default function ClientDetails() {
                                   Alert.alert("خطأ", "تعذر تحديد الفاتورة");
                                   return;
                                 }
-                                void deletePaymentFromInvoice(
+                                void runWithLoading("جاري حذف الدفعة...", () => deletePaymentFromInvoice(
                                   clientId,
                                   selectedInvoice.id,
                                   item.id,
-                                );
+                                ));
                               }}
                             >
                               <Text
@@ -2864,10 +2806,10 @@ export default function ClientDetails() {
                       paddingHorizontal: 10,
                       borderRadius: 10,
                     }}
-                    onPress={() => {
-                      deleteInvoice(selectedInvoice.id);
+                    onPress={() => runWithLoading("جاري حذف الفاتورة...", async () => {
+                      await deleteInvoice(selectedInvoice.id);
                       setSelectedInvoice(null);
-                    }}
+                    })}
                   >
                     <Text style={styles.actionText}>🗑 حذف</Text>
                   </TouchableOpacity>
@@ -2879,7 +2821,7 @@ export default function ClientDetails() {
                       styles.button,
                       { paddingHorizontal: 40, backgroundColor: "#34699A" },
                     ]}
-                    onPress={() => {
+                    onPress={() => runWithLoading("جاري ترحيل المبلغ المتبقي...", async () => {
                       if (!clientId || !selectedInvoice) return;
 
                       if (!selectedInvoice.number) {
@@ -2894,12 +2836,12 @@ export default function ClientDetails() {
 
                       if (!lastInvoice) return;
 
-                      transferRemainingToLastInvoice(
+                      await transferRemainingToLastInvoice(
                         clientId,
                         selectedInvoice,
                         lastInvoice.id,
                       );
-                    }}
+                    })}
                   >
                     <Text style={styles.buttonText}>
                       اضافه الاجمالي لاخر فاتورة
@@ -3020,7 +2962,7 @@ export default function ClientDetails() {
             >
               <TouchableOpacity
                 style={[styles.button, { flex: 1, marginRight: 5 }]}
-                onPress={() => {
+                onPress={() => runWithLoading("جاري تسجيل الدفعة...", async () => {
                   const amountNumber = parseFloat(paymentAmount);
 
                   if (isNaN(amountNumber) || amountNumber <= 0) {
@@ -3029,7 +2971,7 @@ export default function ClientDetails() {
                   }
 
                   if (clientId && invoiceId) {
-                    addPaymentToInvoice(
+                    await addPaymentToInvoice(
                       clientId,
                       invoiceId,
                       paymentMethod,
@@ -3039,7 +2981,7 @@ export default function ClientDetails() {
 
                   setPaymentModal(false);
                   setPaymentAmount("");
-                }}
+                })}
               >
                 <Text style={styles.buttonText}>حفظ</Text>
               </TouchableOpacity>
@@ -3098,7 +3040,7 @@ export default function ClientDetails() {
                   backgroundColor: !invoiceNumber?.trim() ? "gray" : "#34699A",
                 },
               ]}
-              onPress={() => {
+              onPress={() => runWithLoading("جاري ترحيل المبلغ المتبقي...", async () => {
                 if (!clientId || !selectedInvoice) return;
 
                 const sortedInvoices = [...invoices].sort(
@@ -3108,12 +3050,12 @@ export default function ClientDetails() {
 
                 if (!lastInvoice) return;
 
-                transferRemainingToLastInvoice(
+                await transferRemainingToLastInvoice(
                   clientId,
                   selectedInvoice,
                   lastInvoice.id,
                 );
-              }}
+              })}
             >
               <Text style={styles.buttonText}>تأكيد الترحيل</Text>
             </TouchableOpacity>
@@ -3347,7 +3289,7 @@ export default function ClientDetails() {
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 20 }}>
               <TouchableOpacity
                 style={[styles.button, { flex: 1, marginRight: 5 }]}
-                onPress={saveEditedPayment}
+                onPress={() => runWithLoading("جاري حفظ تعديل الدفعة...", saveEditedPayment)}
               >
                 <Text style={styles.buttonText}>حفظ</Text>
               </TouchableOpacity>
@@ -3489,7 +3431,7 @@ export default function ClientDetails() {
             >
               <TouchableOpacity
                 style={[styles.button, { flex: 1, marginRight: 5 }]}
-                onPress={async () => {
+                onPress={() => runWithLoading("جاري تحديث الدفعة...", async () => {
                   if (!editPayment || !selectedInvoice) return;
 
                   const updatedFields = {
@@ -3506,7 +3448,7 @@ export default function ClientDetails() {
                   );
 
                   setEditPaymentModalVisible(false);
-                }}
+                })}
               >
                 <Text style={styles.buttonText}>حفظ</Text>
               </TouchableOpacity>
@@ -3566,7 +3508,7 @@ export default function ClientDetails() {
             />
 
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 10 }}>
-              <TouchableOpacity style={[styles.button, { flex: 1, marginRight: 5 }]} onPress={addReturnToInvoice}>
+              <TouchableOpacity style={[styles.button, { flex: 1, marginRight: 5 }]} onPress={() => runWithLoading("جاري حفظ المرتجع...", addReturnToInvoice)}>
                 <Text style={styles.buttonText}>حفظ</Text>
               </TouchableOpacity>
               <TouchableOpacity

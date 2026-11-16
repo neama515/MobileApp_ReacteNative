@@ -2,6 +2,7 @@ import { Slot, useRouter, useSegments } from "expo-router";
 import React, { useEffect } from "react";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { InvoiceProvider } from "../context/InvoiceContext"; 
+import { LoadingProvider } from "../context/LoadingContext";
 import { ActivityIndicator, Text, View } from "react-native";
 import { BackHandler, Alert } from "react-native";
 
@@ -61,10 +62,13 @@ function RootNavigator() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <InvoiceProvider> 
-        <RootNavigator />
-      </InvoiceProvider>    </AuthProvider>
+    <LoadingProvider>
+      <AuthProvider>
+        <InvoiceProvider>
+          <RootNavigator />
+        </InvoiceProvider>
+      </AuthProvider>
+    </LoadingProvider>
 
   );
 }

@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
+import { useLoading } from "../../context/LoadingContext";
 import { styles } from "../../style/styles";
 import { db } from "../firebase/firebase";
 import { scheduleDebtReminder } from "../services/debtNotifications";
@@ -31,6 +32,7 @@ let savedDebtsScrollOffset = 0;
 
 export default function Debts() {
   const { user } = useAuth();
+  const { runWithLoading } = useLoading();
   const router = useRouter();
   const [groups, setGroups] = useState<CountryGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,11 +106,11 @@ export default function Debts() {
   // );
   useFocusEffect(
     useCallback(() => {
-      loadDebts();
+      void runWithLoading("جاري تحميل المديونيات...", loadDebts);
       if (savedDebtsScrollOffset > 0) {
         pendingRestoreOffset.current = savedDebtsScrollOffset;
       }
-    }, [loadDebts]),
+    }, [loadDebts, runWithLoading]),
   );
   return (
     <View style={[styles.container, { paddingHorizontal: 10, paddingTop: 16 }]}>

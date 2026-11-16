@@ -9,6 +9,7 @@ import {
 } from "firebase/auth";
 import { Platform } from "react-native";
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
+import { useLoading } from "./LoadingContext";
 import { auth } from "../app/firebase/firebase";
 
 interface AuthContextType {
@@ -22,6 +23,7 @@ interface AuthContextType {
 export const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const { runWithLoading } = useLoading();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const supportsSecureStore = Platform.OS !== "web";
@@ -58,12 +60,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
  
   const register = async (email: string, password: string) => {
-    await createUserWithEmailAndPassword(auth, email, password);
+    await runWithLoading("جاري إنشاء الحساب...", () =>
+      createUserWithEmailAndPassword(auth, email, password),
+    );
   };
 
   const login = async (email: string, password: string) => {
     try {
-      const userCredential: UserCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userCredential: UserCredential = await runWithLoading(
+        "جاري تسجيل الدخول...",
+        () => signInWithEmailAndPassword(auth, email, password),
+      );
       const currentUser = userCredential.user;
       if (currentUser) {
         const token = await currentUser.getIdToken(); 
@@ -80,7 +87,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 
   const logout = async () => {
-    await signOut(auth);
+    await runWithLoading("جاري تسجيل الخروج...", () => signOut(auth));
     if (supportsSecureStore) {
       await SecureStore.deleteItemAsync("user");
     }

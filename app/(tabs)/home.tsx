@@ -22,12 +22,9 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
+import { useLoading } from "../../context/LoadingContext";
 import { styles } from "../../style/styles";
 import { db } from "../firebase/firebase";
-import { I18nManager } from 'react-native';
-
-I18nManager.allowRTL(false);
-I18nManager.forceRTL(false);
 interface Client {
   id: string;
   name: string;
@@ -51,6 +48,7 @@ let savedHomeScrollOffset = 0;
 
 const Home = () => {
   const { user } = useAuth();
+  const { runWithLoading } = useLoading();
   const router = useRouter();
   const { search: restoredSearch } = useLocalSearchParams<{ search?: string }>();
 
@@ -155,10 +153,10 @@ const [error,setError]=useState("")
       return;
     }
     if (!hasLoaded.current) {
-      loadClients();
+      void runWithLoading("جاري تحميل العملاء...", loadClients);
       hasLoaded.current = true;
     }
-  }, [user]);
+  }, [user, runWithLoading]);
 
   const saveClient = async () => {
     console.log(
@@ -225,7 +223,7 @@ const [error,setError]=useState("")
       {
         text: "نعم",
         style: "destructive",
-        onPress: async () => {
+        onPress: () => runWithLoading("جاري حذف العميل...", async () => {
           if (!user) {
             Alert.alert("خطأ", "المستخدم غير مسجل حالياً");
             return;
@@ -255,7 +253,7 @@ const [error,setError]=useState("")
             console.error("❌ Error deleting client", err);
             Alert.alert("خطأ", "حدث خطأ أثناء حذف العميل");
           }
-        },
+        }),
       },
     ]);
   };
@@ -319,7 +317,7 @@ const [error,setError]=useState("")
               styles.button,
               { backgroundColor: editingId ? "#ebbf24" : "#34699A" },
             ]}
-            onPress={saveClient}
+            onPress={() => runWithLoading(editingId ? "جاري حفظ التعديلات..." : "جاري إضافة العميل...", saveClient)}
           >
             <Text style={styles.buttonText}>
               {editingId ? "💾 حفظ التعديلات" : "➕ إضافة عميل"}
